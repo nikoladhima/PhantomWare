@@ -1685,7 +1685,7 @@ local function ClearESP(Player)
 end
 Players.PlayerRemoving:Connect(ClearESP)
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/core/Main.luau"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/core/Library.luau"))()
 local Window = Library:CreateWindow({Title = 'PhantomWare | discord.gg/DwRT2nH93D', TabPadding = 8, MenuFadeTime = 0.2}, 1)
 local Toggles = Library.Toggles
 local Options = Library.Options
