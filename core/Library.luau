@@ -1130,10 +1130,24 @@ do
         end
 
         function KeyPicker:SetValue(Data)
+            if type(Data) ~= "table" then
+                Data = {Data, KeyPicker.Mode or "Toggle"}
+            end
+
             local Key = Data[1]
+            if typeof(Key) ~= "string" or Key == "" then
+                Key = Info.Default or "None"
+            end
+
+            local Mode = Data[2]
+            if typeof(Mode) ~= "string" or not ModeButtons[Mode] then
+                Mode = KeyPicker.Mode or "Toggle"
+            end
+
             DisplayLabel.Text = Key
             KeyPicker.Value = Key
-            ModeButtons[Data[2]]:Select()
+            ModeButtons[Mode]:Select()
+            Library:SafeCallback(KeyPicker.Callback, Key)
             KeyPicker:Update()
             Library:UpdateDependencyBoxes()
         end
@@ -1200,9 +1214,11 @@ do
 
                     DisplayLabel.Text = Key
                     KeyPicker.Value = Key
+                    Library:SafeCallback(KeyPicker.Callback, Key)
+                    KeyPicker:Update()
 
-                    Library:SafeCallback(KeyPicker.ChangedCallback, Input.KeyCode or Input.UserInputType)
-                    Library:SafeCallback(KeyPicker.Changed, Input.KeyCode or Input.UserInputType)
+                    Library:SafeCallback(KeyPicker.ChangedCallback, Key)
+                    Library:SafeCallback(KeyPicker.Changed, Key)
                     Library:AttemptSave()
                     Event:Disconnect()
                 end)
@@ -2806,6 +2822,10 @@ do
             if Success then
                 for _,Configuration in ipairs(TablesToSave) do
                     for Setting in next, Configuration do
+                        if Setting == "MenuToggleKeybind" then
+                            continue
+                        end
+
                         local Value = Data[Setting]
                         if Value == nil then
                             continue
@@ -2868,6 +2888,9 @@ do
             local Data = {}
             for _,TableOfSettings in ipairs(TablesToSave) do
                 for Setting, Value in next, TableOfSettings do
+                    if Setting == "MenuToggleKeybind" then
+                        continue
+                    end
                     Data[Setting] = SerializeValue(Value)
                 end
             end
