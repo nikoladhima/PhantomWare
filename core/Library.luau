@@ -3719,7 +3719,7 @@ function Library:CreateWindow(Configuration, IsParallel)
         if Toggled then
             Outer.Visible = true
             task.spawn(function()
-                local State = InputService.MouseIconEnabled
+                local State = UserInputService.MouseIconEnabled
 
                 local Cursor = Drawing.new('Triangle')
                 Cursor.Thickness = 1
@@ -3733,9 +3733,9 @@ function Library:CreateWindow(Configuration, IsParallel)
                 CursorOutline.Visible = true
 
                 while Toggled and ScreenGui.Parent do
-                    InputService.MouseIconEnabled = false
+                    UserInputService.MouseIconEnabled = false
 
-                    local MouseLocation = InputService:GetMouseLocation()
+                    local MouseLocation = UserInputService:GetMouseLocation()
 
                     Cursor.Color = Library.AccentColor
 
@@ -3750,7 +3750,7 @@ function Library:CreateWindow(Configuration, IsParallel)
                     RenderStepped:Wait()
                 end
 
-                InputService.MouseIconEnabled = State
+                UserInputService.MouseIconEnabled = State
                 Cursor:Remove()
                 CursorOutline:Remove()
             end)
