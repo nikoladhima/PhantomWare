@@ -2948,7 +2948,7 @@ RunService.Heartbeat:Connect(function(DeltaTime)
 						PlaySoundId(ShootSound, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
 					end --AudioSystem.playSoundId(WeaponData.firesoundid, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)]]
 				else
-					PlaySoundId(HitSound, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
+					PlaySoundId(HitSound, 2, WeaponData.firevolume, 1, Barrel, nil, 0, 0.05)
 				end
 
 				if ShouldCreateBulletTracer then
