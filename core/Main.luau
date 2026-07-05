@@ -503,21 +503,16 @@ local function GetBulletVelocity(Origin, Target, Speed, Acceleration, BulletAcce
 		return
 	end
 
-	return (Delta - (TimeToHit * TimeToHit / 2) * Acceleration) / TimeToHit
+	return (Delta - (TimeToHit * TimeToHit * 0.5) * Acceleration) / TimeToHit
 end
 
 local ViewportSize = Camera.ViewportSize
-local ViewportSizeX = ViewportSize.X
-local ViewportSizeY = ViewportSize.Y
-local ScreenXCenter = ViewportSizeX * 0.5
-local ScreenYCenter = ViewportSizeY * 0.5
-local ScreenBottom = Vector2.new(ScreenXCenter, ViewportSizeY)
-local ScreenTop = Vector2.new(ScreenXCenter, 0)
+local ViewportSizeX, ViewportSizeY = ViewportSize.X, ViewportSize.Y
+local ScreenXCenter, ScreenYCenter = ViewportSizeX * 0.5, ViewportSizeY * 0.5
+local ScreenBottom, ScreenTop = Vector2.new(ScreenXCenter, ViewportSizeY), Vector2.new(ScreenXCenter, 0)
 local ScreenCenter = Vector2.new(ScreenXCenter, ScreenYCenter)
 local ScreenCenterX, ScreenCenterY = ScreenCenter.X, ScreenCenter.Y
-local MouseLocation = UserInputService:GetMouseLocation()
-local TwoPi, Quarter = math.pi * 2, math.pi * 0.5
-local NegativeQuarter = -Quarter
+local TwoPi, Quarter, NegativeQuarter = math.pi * 2, math.pi * 0.5, -(math.pi * 0.5)
 
 local function WorldToViewportPoint(Position, KeepZ)
 	local Screen, OnScreen = Camera:WorldToViewportPoint(Position)
@@ -794,7 +789,7 @@ local function GetTargetPart(Character, AimbotPart, IsWallCheckOff)
 				continue
 			end
 
-			local DeltaX, DeltaY = Screen.X - MouseLocation.X, Screen.Y - MouseLocation.Y
+			local DeltaX, DeltaY = Screen.X - ScreenCenterX, Screen.Y - ScreenCenterY
 			local Distance = DeltaX * DeltaX + DeltaY * DeltaY
 			if Distance < BestScore then
 				local Status = CanSee(Part, Layers)
@@ -1657,18 +1652,10 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 			SetProperty(Tracer, "From", ScreenTop)
 		elseif Origin == "Center" then
 			SetProperty(Tracer, "From", ScreenCenter)
-		elseif Origin == "Mouse" then
-			SetProperty(Tracer, "From", MouseLocation)
 		else
 			SetProperty(Tracer, "From", ScreenBottom)
 		end
-
-		if Visuals.EnemyESP_TracerTarget == "Torso" then
-			SetProperty(Tracer, "To", Vector2.new(HeadScreenX, (HeadScreen.Y + BottomScreenY) * 0.5))
-		else
-			SetProperty(Tracer, "To", HeadScreen)
-		end
-
+		SetProperty(Tracer, "To", Visuals.EnemyESP_TracerTarget == "Torso" and Vector2.new(HeadScreenX, (HeadScreen.Y + BottomScreenY) * 0.5) or HeadScreen)
 		SetProperty(Tracer, "Visible", true)
 		SetProperty(Tracer, "Transparency", GlobalOpacity)
 	else
@@ -1729,8 +1716,9 @@ Aiming_Aimbot:AddToggle("Aimbot_Enabled", {Text = "Aimbot", Default = Aiming.Aim
 	UpdateTable(Aiming, "Aimbot_Enabled", Value, function(Value)
 		IsAimbotInputActive = Value
 	end)
-end}):AddKeyPicker("Aimbot_Keybind", {Default = Aiming.Aimbot_Keybind, Mode = "Toggle", Text = "Aiming Keybind", Callback = function(Value)
-	UpdateTable(Aiming, "Aimbot_Keybind", Value)
+end}):AddKeyPicker("Aimbot_Keybind", {Default = Aiming.Aimbot_Keybind, Mode = "Toggle", Text = "Aiming Keybind", ChangedCallback = function(Key)
+	UpdateTable(Aiming, "Aimbot_Keybind", Key)
+end, Callback = function(Value)
 	IsAimbotInputActive = Value
 end})
 
@@ -1797,8 +1785,9 @@ Aiming_RageBot:AddToggle("RageBot_Enabled", {Text = "RageBot", Default = Aiming.
 	UpdateTable(Aiming, "RageBot_Enabled", Value, function(Value)
 		IsRageBotInputActive = Value
 	end)
-end}):AddKeyPicker("RageBot_Keybind", {Default = Aiming.RageBot_Keybind, Mode = "Toggle", Text = "RageBot Keybind", Callback = function(Value)
-	UpdateTable(Aiming, "RageBot_Keybind", Value)
+end}):AddKeyPicker("RageBot_Keybind", {Default = Aiming.RageBot_Keybind, Mode = "Toggle", Text = "RageBot Keybind", ChangedCallback = function(Key)
+	UpdateTable(Aiming, "RageBot_Keybind", Key)
+end, Callback = function(Value)
 	IsRageBotInputActive = Value
 end})
 
@@ -2151,7 +2140,7 @@ TracersDependencyBox:AddDropdown("EnemyESP_TracerTarget", {Text = "Target", Defa
 	Visuals.EnemyESP_TracerTarget = Value
 end})
 
-TracersDependencyBox:AddDropdown("EnemyESP_TracerOrigin", {Text = "Origin", Default = Visuals.EnemyESP_TracerOrigin, Values = {"Bottom", "Center", "Top", "Mouse"}, Callback = function(Value)
+TracersDependencyBox:AddDropdown("EnemyESP_TracerOrigin", {Text = "Origin", Default = Visuals.EnemyESP_TracerOrigin, Values = {"Bottom", "Center", "Top"}, Callback = function(Value)
 	Visuals.EnemyESP_TracerOrigin = Value
 end})
 
@@ -2167,8 +2156,9 @@ end})
 World_Camera:AddToggle("Camera_ThirdPersonView", {Text = "Third Person View", Default = Visuals.Camera_ThirdPersonView, Callback = function(Value)
 	UpdateTable(Visuals, "Camera_ThirdPersonView", Value)
 end}):AddKeyPicker("Camera_ThirdPersonView_Keybind", {
-	Default = Visuals.Camera_ThirdPersonView_Keybind, Mode = "Toggle", Text = "Third Person View Keybind", Callback = function(Value)
-		UpdateTable(Visuals, "Camera_ThirdPersonView_Keybind", Value)
+	Default = Visuals.Camera_ThirdPersonView_Keybind, Mode = "Toggle", Text = "Third Person View Keybind", ChangedCallback = function(Key)
+		UpdateTable(Visuals, "Camera_ThirdPersonView_Keybind", Key)
+	end, Callback = function(Value)
 		IsThirdPersonActive = Value
 	end
 })
@@ -2330,7 +2320,7 @@ end})
 
 local Settings_UserInterface = Tabs.Settings:AddLeftGroupbox("User Interface")
 Settings_UserInterface:CreateConfigurationManager("NikoletoScripts/PhantomWare", ".ns", {Aiming, Visuals, Miscellaneous, Settings})
-Settings_UserInterface:AddLabel("Menu Toggle Keybind"):AddKeyPicker("Menu Toggle Keybind", {Default = "RightShift", Mode = "Toggle", Text = "Menu Toggle Keybind", Callback = function(Value)
+Settings_UserInterface:AddLabel("Menu Toggle Keybind"):AddKeyPicker("MenuToggleKeybind", {Default = "RightShift", Mode = "Toggle", Text = "Menu Toggle Keybind", Callback = function(Value)
 	Library:Toggle()
 end})
 
@@ -2972,7 +2962,6 @@ local TargetTracer = CreateDrawing("Line", {Visible = false, Color = Aiming.Aimb
 local LastESPUpdateTime, ns__mousemoverel = 0, mousemoverel or function() end
 RunService.RenderStepped:Connect(function()
 	local Now, LocalHeadPosition = os.clock(), GetLocalPosition()
-	MouseLocation = UserInputService:GetMouseLocation()
 	table.clear(CanSeeCache)
 
 	for Index = #ActiveHitMarkers, 1, -1 do
