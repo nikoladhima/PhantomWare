@@ -235,8 +235,8 @@ local Visuals = {
 	Combat_BulletTracerThickness = 3.5,
 	Combat_BulletTracerDuration = 0.55,
 
-	Combat_KillEffectEnabled = false,
-	Combat_KillEffectColor = Color3.fromRGB(255, 255, 255),
+	Combat_LightningKillEffectEnabled = false,
+	Combat_LightningKillEffectColor = Color3.fromRGB(255, 255, 255),
 
 	Combat_HitMarkerEnabled = false,
 	Combat_HitMarkerColor = Color3.fromRGB(255, 255, 255),
@@ -1055,13 +1055,15 @@ local CustomSounds = {
 
 local PlaySoundId = AudioSystem.playSoundId
 function AudioSystem.playSoundId(AssetId, Priority, Volume, Pitch, Part, MaxPartDistance, PitchRange, RandomPitch, EmitterSize, RollOffMode, PlayOnRemove, Looped)
-	if Miscellaneous.SoundOverride_ShootSound ~= "None" then
-		local ActiveWeapon = GetActiveWeapon()
-		if ActiveWeapon and AssetId == ActiveWeapon:getWeaponStat("firesoundid") then
-			return PlaySoundId(CustomSounds[Miscellaneous.SoundOverride_ShootSound], Priority, Volume)
-		end
+	local ShootSound = Miscellaneous.SoundOverride_ShootSound
+	if ShootSound == "None" then
+		return PlaySoundId(AssetId, Priority, Volume, Pitch, Part, MaxPartDistance, PitchRange, RandomPitch, EmitterSize, RollOffMode, PlayOnRemove, Looped)
 	end
-	return PlaySoundId(AssetId, Priority, Volume, Pitch, Part, MaxPartDistance, PitchRange, RandomPitch, EmitterSize, RollOffMode, PlayOnRemove, Looped)
+
+	local ActiveWeapon = GetActiveWeapon()
+	if ActiveWeapon and AssetId == ActiveWeapon._weaponData.firesoundid then
+		return PlaySoundId(CustomSounds[ShootSound], Priority, Volume)
+	end
 end
 
 local PlaySound = AudioSystem.playSound
@@ -1942,10 +1944,10 @@ SoundOverride_Groupbox:AddDropdown("SoundOverride_GotHitSound", {Text = "Hurt", 
 	UpdateTable(Miscellaneous, "SoundOverride_GotHitSound", Value)
 end})
 
-Visuals_CombatGroupbox:AddToggle("Combat_KillEffectEnabled", {Text = "Lightning Kill Effect", Default = Visuals.Combat_KillEffectEnabled, Callback = function(Value)
-	UpdateTable(Visuals, "Combat_KillEffectEnabled", Value)
-end}):AddColorPicker("Combat_KillEffectColor", {Default = Visuals.Combat_KillEffectColor, Title = "Lightning Color", Callback = function(Value)
-	UpdateTable(Visuals, "Combat_KillEffectColor", Value)
+Visuals_CombatGroupbox:AddToggle("Combat_LightningKillEffectEnabled", {Text = "Lightning Kill Effect", Default = Visuals.Combat_LightningKillEffectEnabled, Callback = function(Value)
+	UpdateTable(Visuals, "Combat_LightningKillEffectEnabled", Value)
+end}):AddColorPicker("Combat_LightningKillEffectColor", {Default = Visuals.Combat_LightningKillEffectColor, Title = "Lightning Color", Callback = function(Value)
+	UpdateTable(Visuals, "Combat_LightningKillEffectColor", Value)
 end})
 
 Visuals_CombatGroupbox:AddToggle("Combat_BulletTracers", {Text = "Bullet Tracers", Default = Visuals.Combat_BulletTracers, Callback = function(Value)
@@ -2411,7 +2413,7 @@ if RemoteEvent then
 			end
 
 			if IsLocalPlayer then
-				if Visuals.Combat_KillEffectEnabled then
+				if Visuals.Combat_LightningKillEffectEnabled then
 					local Origin = Info.origin
 					if not Origin then
 						return
@@ -2422,7 +2424,7 @@ if RemoteEvent then
 						return
 					end
 
-					local Color = Visuals.Combat_KillEffectColor
+					local Color = Visuals.Combat_LightningKillEffectColor
 
 					local Part = ns__cloneref(Instance.new("Part"))
 					Part.Anchored = true
@@ -2939,7 +2941,15 @@ RunService.Heartbeat:Connect(function(DeltaTime)
 					PlayGameSound("1PsniperEcho", 1)
 				end
 
-				PlaySoundId(WeaponData.firesoundid, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
+				local HitSound = CustomSounds[Miscellaneous.SoundOverride_HitSound]
+				if HitSound == "None" then
+					--[[local ShootSound = CustomSounds[Miscellaneous.SoundOverride_ShootSound]
+					if ShootSound ~= "None" then
+						PlaySoundId(ShootSound, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
+					end --AudioSystem.playSoundId(WeaponData.firesoundid, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)]]
+				else
+					PlaySoundId(HitSound, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
+				end
 
 				if ShouldCreateBulletTracer then
 					CreateBulletTracer(NewOrigin, Direction * 1500)
