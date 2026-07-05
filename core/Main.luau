@@ -1608,7 +1608,7 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 
 			if Elements.Health then
 				local CurrentHealth = math.floor(Entry:getHealth())
-				Text ..= (Text ~= "" and (" " .. CurrentHealth) or CurrentHealth)
+				Text ..= ((Text ~= "" and (" [" .. CurrentHealth) or CurrentHealth)) .. " Health]"
 			end
 
 			if Elements.Distance then
