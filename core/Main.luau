@@ -4,10 +4,15 @@ end
 getgenv().ns__PhantomWare__Executed = true
 pcall(clearteleportqueue or clear_teleport_queue)
 
-local ExecutorName, ns__Modules, ns__Count = identifyexecutor and identifyexecutor() or getexecutorname and getexecutorname() or "Unknown", nil, 0
-local MaxCount = string.find(string.lower(ExecutorName), "xeno") and 10 or 15
+local Players = game:GetService("Players")
+local LocalPlayer = (function()
+	local LocalPlayer = Players.LocalPlayer
+	return (LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")):WaitForChild("MenuScreenGui", 9e9) and LocalPlayer
+end)()
+
+local ExecutorName, ns__Modules, ns__Count = identifyexecutor and identifyexecutor() or (getexecutorname and getexecutorname()), nil, 0
 while true do
-	if ns__Count >= MaxCount then
+	if ns__Count >= 10 then
 		break
 	end
 
@@ -32,12 +37,12 @@ end
 if not ns__Modules then
 	getgenv().ns__PhantomWare__Executed = false
 	pcall(setfflag, "DebugRunParallelLuaOnMainThread", "True")
-	game:GetService("Players").LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing Game Modules, please make a ticket in the discord server immediately." .. (function()
+	LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing Game Modules, please make a ticket in the discord server immediately." .. (function()
 		return ((setclipboard and pcall(setclipboard, "discord.gg/DwRT2nH93D")) and "" or "") .. "\ndiscord.gg/DwRT2nH93D"
 	end)())
     return
 elseif not ns__Modules.ReplicationInterface then
-	writefile("NikoletoScripts/PhantomWare/Logs/Log_" .. os.date("%Y-%m-%d_%H-%M-%S") .. ".nslog", "[" .. ExecutorName .. " | " .. os.date(
+	writefile("NikoletoScripts/PhantomWare/Logs/Log_" .. os.date("%Y-%m-%d_%H-%M-%S") .. ".nslog", "[" .. (ExecutorName or "Unknown") .. " | " .. os.date(
 		"%Y-%m-%d | %H:%M:%S"
 	) .. "] Module Dump (" .. (function()
 		local Count = 0
@@ -56,7 +61,7 @@ elseif not ns__Modules.ReplicationInterface then
 	getgenv().ns__PhantomWare__Executed = false
 	pcall(setfflag, "DebugRunParallelLuaOnMainThread", "True")
 
-    game:GetService("Players").LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing ReplicationInterface, please make a ticket in the discord server immediately." .. (function()
+    LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing ReplicationInterface, please make a ticket in the discord server immediately." .. (function()
 		return (pcall(setclipboard, "discord.gg/DwRT2nH93D") and "" or "") .. "\ndiscord.gg/DwRT2nH93D"
 	end)())
     return
@@ -73,14 +78,8 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
-local Terrain = ns__cloneref(workspace.Terrain)
-local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
-
-local LocalPlayer = (function()
-	local LocalPlayer = Players.LocalPlayer
-	return (LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")):WaitForChild("MenuScreenGui", 9e9) and LocalPlayer
-end)()
+local Terrain = ns__cloneref(workspace.Terrain)
 
 local PlayersFolder = workspace:WaitForChild("Players", 9e9)
 local IgnoreFolder = workspace:WaitForChild("Ignore", 9e9) 
@@ -165,7 +164,7 @@ local Aiming = {
 	Aimbot_Enabled = false,
 	Aimbot_Keybind = "None",
 
-	Aimbot_Type = "Silent",
+	Aimbot_Type = "Camera",
 	Aimbot_Part = "Head",
 	Aimbot_PartPriorityOrder = {"Head", "Torso", "Arms", "Legs"},
 
@@ -180,8 +179,8 @@ local Aiming = {
 	Aimbot_FOVAlpha = 0.5,
 	Aimbot_FOVRadius = 150,
 
-	Aimbot_TargetTracer = false,
-	Aimbot_TargetTracerColor = Color3.fromRGB(255, 255, 100),
+	Aimbot_TargetTracer = true,
+	Aimbot_TargetTracerColor = Color3.fromRGB(255, 255, 255),
 
 	RageBot_Enabled = false,
 	RageBot_Keybind = "None",
@@ -198,23 +197,27 @@ local Visuals = {
 	EnemyESP_MasterEnabled = true,
 	EnemyESP_MasterOpacity = 100,
 
-	EnemyESP_Chams = true,
+	EnemyESP_Chams = false,
 	EnemyESP_ChamsStyle = "Solid",
 	EnemyESP_ChamsColor = Color3.fromRGB(255, 0, 0),
 	EnemyESP_ChamsRendering = {Fill = true, Outline = true},
 	EnemyESP_ChamsVisibleColor = Color3.fromRGB(0, 255, 0),
 	EnemyESP_ChamsOccluded = false,
 
-	EnemyESP_Boxes = true,
+	EnemyESP_Boxes = false,
 	EnemyESP_BoxColor = Color3.fromRGB(255, 255, 255),
 	EnemyESP_BoxThickness = 1.5,
 
-	EnemyESP_HeadTags = true,
+	EnemyESP_Healthbars = false,
+	EnemyESP_HealthbarColor = Color3.fromRGB(0, 255, 0),
+	EnemyESP_HealthbarWidth = 5,
+
+	EnemyESP_HeadTags = false,
 	EnemyESP_HeadTagElements = {Name = true, Health = true, Distance = true, Visibility = true},
 	EnemyESP_TagColor = Color3.fromRGB(255, 255, 255),
 	EnemyESP_TagSize = 13,
 
-	EnemyESP_Tracers = true,
+	EnemyESP_Tracers = false,
 	EnemyESP_TracerColor = Color3.fromRGB(255, 255, 255),
 	EnemyESP_TracerTarget = "Torso",
 	EnemyESP_TracerOrigin = "Bottom",
@@ -228,20 +231,20 @@ local Visuals = {
 	Combat_BulletTracerColor = Color3.fromRGB(255, 255, 255),
 	Combat_BulletTracerAlpha = 0.85,
 	Combat_BulletTracerFadeMode = "Width",
-	Combat_BulletTracerType = "Wavy",
+	Combat_BulletTracerType = "Beam",
 	Combat_BulletTracerThickness = 3.5,
 	Combat_BulletTracerDuration = 0.55,
 
 	Combat_KillEffectEnabled = false,
 	Combat_KillEffectColor = Color3.fromRGB(255, 255, 255),
 
-	Combat_HitMarkerEnabled = true,
+	Combat_HitMarkerEnabled = false,
 	Combat_HitMarkerColor = Color3.fromRGB(255, 255, 255),
 	Combat_HitMarkerStyle = "X",
 	Combat_HitMarkerSize = 8,
 	Combat_HitMarkerGap = 3,
 	Combat_HitMarkerDuration = 0.5,
-	Combat_HitMarkerSpin = true,
+	Combat_HitMarkerSpin = false,
 	Combat_HitMarkerSpinSpeed = 5,
 
 	Combat_GrenadeTrajectory = false,
@@ -282,10 +285,12 @@ local Visuals = {
 
 	Viewmodel_Chams = false,
 	Viewmodel_ChamsTargets = {Arms = true, Weapon = true},
-	Viewmodel_ChamsType = "Highlight",
+	Viewmodel_ChamsType = "ForceField",
 	Viewmodel_ChamsColor = Color3.fromRGB(100, 0, 255),
 	Viewmodel_ChamsTranslucent = false,
-	Viewmodel_NoSleeves = true
+	Viewmodel_ChamsArmsOccluded = false,
+	Viewmodel_ChamsWeaponOccluded = false,
+	Viewmodel_NoSleeves = false
 }
 
 local Miscellaneous = {
@@ -314,9 +319,9 @@ local Miscellaneous = {
 	Movement_AntiAimJitter = false,
 	Movement_AntiAimJitterSpeed = 6,
 
-	HitLogs_Enabled = true,
-	HitLogs_ShowDamage = true,
-	HitLogs_ShowDistance = true,
+	HitLogs_Enabled = false,
+	HitLogs_ShowDamage = false,
+	HitLogs_ShowDistance = false,
 
 	SoundOverride_ShootSound = "None",
 	SoundOverride_HitSound = "None",
@@ -403,6 +408,7 @@ local FireImpulse = ns__require("HudCrosshairsInterface").fireImpulse
 
 local NetworkClientSend = NetworkClient.send
 local GetLocalCharacter = CharacterInterface.getCharacterObject
+local GetActiveCamera = CameraInterface.getActiveCamera
 local PlayGameSound = AudioSystem.play
 local NewBullet = BulletObject.new
 local GetPlayerStatusEntry = PlayerStatusInterface.getEntry
@@ -508,6 +514,7 @@ local ScreenYCenter = ViewportSizeY * 0.5
 local ScreenBottom = Vector2.new(ScreenXCenter, ViewportSizeY)
 local ScreenTop = Vector2.new(ScreenXCenter, 0)
 local ScreenCenter = Vector2.new(ScreenXCenter, ScreenYCenter)
+local ScreenCenterX, ScreenCenterY = ScreenCenter.X, ScreenCenter.Y
 local MouseLocation = UserInputService:GetMouseLocation()
 local TwoPi, Quarter = math.pi * 2, math.pi * 0.5
 local NegativeQuarter = -Quarter
@@ -902,7 +909,7 @@ task.spawn(function()
 					end
 					LastSilent.Target = nil
 					LastSilent.Velocity = nil
-				elseif IsAimbotInputActive then
+				else
 					local Target, Entry = Silent_GetClosest()
 					if Target and Entry then
 						local Player = Entry._player
@@ -1028,6 +1035,7 @@ Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 	ScreenBottom = Vector2.new(ScreenXCenter, ViewportSizeY)
 	ScreenTop = Vector2.new(ScreenXCenter, 0)
 	ScreenCenter = Vector2.new(ScreenXCenter, ScreenYCenter)
+	ScreenCenterX, ScreenCenterY = ScreenCenter.X, ScreenCenterY.Y
 end)
 
 local ActiveBulletTracers = {}
@@ -1173,17 +1181,13 @@ function BulletObject.new(BulletData, ...)
 
 	if Visuals.Combat_BulletTracers then
 		CreateBulletTracer(BulletData.position, BulletData.velocity.Unit * 1500)
+		for _,Beam in next, NewBullet(BulletData)._beamObject.beams do
+			Beam.Enabled = false
+		end
+		return
 	end
 
-	local Result = NewBullet(BulletData)
-	if Visuals.Combat_BulletTracers and Result and Result._beamObject then
-		if Result._beamObject.beams then
-			for _,Beam in next, Result._beamObject.beams do
-				Beam.Enabled = false
-			end
-		end
-	end
-	return Result
+	return NewBullet(BulletData)
 end
 
 local FlashlightPart = ns__cloneref(Instance.new("Part"))
@@ -1269,6 +1273,33 @@ for _,Child in next, IgnoreFolder:GetChildren() do
 	end
 end
 
+local Step = ScreenCull.step
+function ScreenCull.step(...)
+	Step(...)
+
+	if IsThirdPersonActive then
+		local CameraOffset = Vector3.new(Visuals.Camera_ThirdPersonOffsetX, Visuals.Camera_ThirdPersonOffsetY, Visuals.Camera_ThirdPersonOffsetZ)
+		local DidCollide = false
+
+		if Visuals.Camera_ThirdPersonCameraCollision and CameraOffset.Magnitude > 0 then
+			local OldPosition = Camera.CFrame.Position
+			local Raycast = workspace:Raycast(OldPosition, (Camera.CFrame * CFrame.new(CameraOffset)).Position - OldPosition, AimingRaycastParams)
+			if Raycast then
+				Camera.CFrame *= CFrame.new(CameraOffset * ((Raycast.Position - OldPosition).Magnitude / CameraOffset.Magnitude) * 0.99)
+				DidCollide = true
+			end
+		end
+
+		if not DidCollide then
+			Camera.CFrame *= CFrame.new(CameraOffset)
+		end
+	end
+
+	if Visuals.Camera_FOVModificationEnabled then
+		Camera.FieldOfView = Visuals.Camera_FOVValue
+	end
+end
+
 IgnoreFolder.ChildAdded:Connect(function(Child)
 	local Humanoid = Child:IsA("Model") and (Child:FindFirstChildOfClass("Humanoid") or Child:WaitForChild("Humanoid", 2))
 	if not Humanoid then
@@ -1313,32 +1344,6 @@ DeadBodyFolder.ChildAdded:Connect(function(Child)
 	end
 end)
 
-Camera:GetPropertyChangedSignal("CFrame"):Connect(function()
-	if IsThirdPersonActive then
-		local CameraOffset = Vector3.new(Visuals.Camera_ThirdPersonOffsetX, Visuals.Camera_ThirdPersonOffsetY, Visuals.Camera_ThirdPersonOffsetZ)
-		local DidCollide = false
-
-		if Visuals.Camera_ThirdPersonCameraCollision and CameraOffset.Magnitude > 0 then
-			local OldPosition = Camera.CFrame.Position
-			local Raycast = workspace:Raycast(OldPosition, (Camera.CFrame * CFrame.new(CameraOffset)).Position - OldPosition, AimingRaycastParams)
-			if Raycast then
-				Camera.CFrame *= CFrame.new(CameraOffset * ((Raycast.Position - OldPosition).Magnitude / CameraOffset.Magnitude) * 0.99)
-				DidCollide = true
-			end
-		end
-
-		if not DidCollide then
-			Camera.CFrame *= CFrame.new(CameraOffset)
-		end
-	end
-end)
-
-Camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
-	if Visuals.Camera_FOVModificationEnabled then
-		Camera.FieldOfView = Visuals.Camera_FOVValue
-	end
-end)
-
 RunService.RenderStepped:Connect(function()
 	CanSeeFrameCounter += 1
 	local PrevousFrame = CanSeeFrameCounter - 1
@@ -1355,28 +1360,6 @@ RunService.RenderStepped:Connect(function()
 			table.insert(CanSeeCachePool, Entry)
 			RageBotCache[Part] = nil
 		end
-	end
-
-	if IsThirdPersonActive then
-		local CameraOffset = Vector3.new(Visuals.Camera_ThirdPersonOffsetX, Visuals.Camera_ThirdPersonOffsetY, Visuals.Camera_ThirdPersonOffsetZ)
-		local DidCollide = false
-
-		if Visuals.Camera_ThirdPersonCameraCollision and CameraOffset.Magnitude > 0 then
-			local OldPosition = Camera.CFrame.Position
-			local Raycast = workspace:Raycast(OldPosition, (Camera.CFrame * CFrame.new(CameraOffset)).Position - OldPosition, AimingRaycastParams)
-			if Raycast then
-				Camera.CFrame *= CFrame.new(CameraOffset * ((Raycast.Position - OldPosition).Magnitude / CameraOffset.Magnitude) * 0.99)
-				DidCollide = true
-			end
-		end
-
-		if not DidCollide then
-			Camera.CFrame *= CFrame.new(CameraOffset)
-		end
-	end
-
-	if Visuals.Camera_FOVModificationEnabled then
-		Camera.FieldOfView = Visuals.Camera_FOVValue
 	end
 
 	for Sleeve, OriginalParent in next, SleevesCache do
@@ -1413,25 +1396,15 @@ RunService.RenderStepped:Connect(function()
 
 		local Highlight = ModelHighlights[Model]
 		if ValidTarget and Visuals.Viewmodel_Chams then
-			if Visuals.Viewmodel_ChamsType == "Highlight" then
-				Highlight.Enabled = true
-				Highlight.Adornee = Model
-				Highlight.FillColor = Visuals.Viewmodel_ChamsColor
-				Highlight.OutlineColor = DarkerColorCache[Visuals.Viewmodel_ChamsColor]
-				local Transparency = Visuals.Viewmodel_ChamsTranslucent and 0.5 or 0
-				Highlight.FillTransparency = Transparency
-				Highlight.OutlineTransparency = Transparency
-			else
-				Highlight.Enabled = false
-				for _,Part in ipairs(Parts) do
-					if not ViewmodelCache[Part] then
-						ViewmodelCache[Part] = {Material = Part.Material.Name, Transparency = Part.Transparency, Color = Part.Color}
-					end
-					local Material = Visuals.Viewmodel_ChamsType
-					Part.Material = Enum.Material[Material]
-					Part.Color = Visuals.Viewmodel_ChamsColor
-					Part.Transparency = (Material ~= "ForceField" and Visuals.Viewmodel_ChamsTranslucent) and 0.5 or 0
+			Highlight.Enabled = false
+			for _,Part in ipairs(Parts) do
+				if not ViewmodelCache[Part] then
+					ViewmodelCache[Part] = {Material = Part.Material.Name, Transparency = Part.Transparency, Color = Part.Color}
 				end
+				local Material = Visuals.Viewmodel_ChamsType
+				Part.Material = Enum.Material[Material]
+				Part.Color = Visuals.Viewmodel_ChamsColor
+				Part.Transparency = (Material ~= "ForceField" and Visuals.Viewmodel_ChamsTranslucent) and 0.5 or 0
 			end
 		else
 			Highlight.Enabled = false
@@ -1555,6 +1528,9 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 	if not DrawingGroup then
 		DrawingGroup = {
 			Box = CreateDrawing("Square", {Filled = false, Color = Visuals.EnemyESP_BoxColor, Thickness = Visuals.EnemyESP_BoxThickness}),
+			HealthbarOutline = CreateDrawing("Square", {Filled = false, Color = Color3.fromRGB(255, 255, 255), Thickness = 1}),
+			HealthbarBackground = CreateDrawing("Square", {Filled = true, Color = Color3.fromRGB(8, 8, 8)}),
+			Healthbar = CreateDrawing("Square", {Filled = true, Color = Visuals.EnemyESP_HealthbarColor}),
 			Tag = CreateDrawing("Text", {Size = Visuals.EnemyESP_TagSize, Outline = true, Center = true, Color = Visuals.EnemyESP_TagColor}),
 			Dot = CreateDrawing("Circle", {Filled = true, Radius = Visuals.EnemyESP_DotSize, Color = Visuals.EnemyESP_DotColor}),
 			Tracer = CreateDrawing("Line", {Color = Visuals.EnemyESP_TracerColor, Thickness = Visuals.EnemyESP_TracerThickness}),
@@ -1563,6 +1539,7 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 	end
 
 	local Box, Tag, Dot, Tracer = DrawingGroup.Box, DrawingGroup.Tag, DrawingGroup.Dot, DrawingGroup.Tracer
+	local HealthbarOutline, HealthbarBackground, Healthbar = DrawingGroup.HealthbarOutline, DrawingGroup.HealthbarBackground, DrawingGroup.Healthbar
 
 	local HeadPosition = Head.Position
 	local HeadScreen, HeadOnScreen = WorldToViewportPoint(HeadPosition)
@@ -1571,6 +1548,9 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 		SetProperty(Tag, "Visible", false)
 		SetProperty(Dot, "Visible", false)
 		SetProperty(Tracer, "Visible", false)
+		SetProperty(HealthbarOutline, "Visible", false)
+		SetProperty(HealthbarBackground, "Visible", false)
+		SetProperty(Healthbar, "Visible", false)
 		return
 	end
 
@@ -1607,8 +1587,7 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 			end
 
 			if Elements.Health then
-				local CurrentHealth = math.floor(Entry:getHealth())
-				Text ..= ((Text ~= "" and (" [" .. CurrentHealth) or CurrentHealth)) .. " Health]"
+				Text ..= (Text ~= "" and (" [") or "[") .. tostring(math.floor(Entry:getHealth())) .. "]"
 			end
 
 			if Elements.Distance then
@@ -1626,9 +1605,40 @@ local function UpdateESP(LocalHeadPosition, Player, Entry, Head, Torso, Arms, Le
 		else
 			SetProperty(Tag, "Visible", false)
 		end
+
+		if Visuals.EnemyESP_Healthbars then
+			local BarWidth = math.clamp(Visuals.EnemyESP_HealthbarWidth, 3, 8)
+			local BarHeight = math.max(24, BoxHeight * 0.9)
+			local BarX = HeadScreenX + BoxWidth * 0.5 + 5
+			local BarY = TopScreenY + (BoxHeight - BarHeight) * 0.5
+			local FillHeight = math.max(1, math.floor((BarHeight - 2) * math.clamp(Entry:getHealth() * 0.01, 0, 1)))
+
+			SetProperty(HealthbarOutline, "Visible", true)
+			SetProperty(HealthbarOutline, "Size", Vector2.new(BarWidth, BarHeight))
+			SetProperty(HealthbarOutline, "Position", Vector2.new(BarX, BarY))
+			SetProperty(HealthbarOutline, "Transparency", GlobalOpacity)
+
+			SetProperty(HealthbarBackground, "Visible", true)
+			SetProperty(HealthbarBackground, "Size", Vector2.new(BarWidth - 2, BarHeight - 2))
+			SetProperty(HealthbarBackground, "Position", Vector2.new(BarX + 1, BarY + 1))
+			SetProperty(HealthbarBackground, "Transparency", GlobalOpacity)
+
+			SetProperty(Healthbar, "Visible", true)
+			SetProperty(Healthbar, "Size", Vector2.new(BarWidth - 2, FillHeight))
+			SetProperty(Healthbar, "Position", Vector2.new(BarX + 1, BarY + 1 + ((BarHeight - 2) - FillHeight)))
+			SetProperty(Healthbar, "Color", Visuals.EnemyESP_HealthbarColor)
+			SetProperty(Healthbar, "Transparency", GlobalOpacity)
+		else
+			SetProperty(HealthbarOutline, "Visible", false)
+			SetProperty(HealthbarBackground, "Visible", false)
+			SetProperty(Healthbar, "Visible", false)
+		end
 	else
 		SetProperty(Box, "Visible", false)
 		SetProperty(Tag, "Visible", false)
+		SetProperty(HealthbarOutline, "Visible", false)
+		SetProperty(HealthbarBackground, "Visible", false)
+		SetProperty(Healthbar, "Visible", false)
 	end
 
 	if Visuals.EnemyESP_Dots then
@@ -1686,7 +1696,7 @@ end
 Players.PlayerRemoving:Connect(ClearESP)
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/core/Library.luau"))()
-local Window = Library:CreateWindow({Title = 'PhantomWare | discord.gg/DwRT2nH93D', TabPadding = 8, MenuFadeTime = 0.2}, 1)
+local Window = Library:CreateWindow({Title = "PhantomWare | discord.gg/DwRT2nH93D" .. (ExecutorName and (" | " .. ExecutorName) or ""), TabPadding = 8, MenuFadeTime = 0.2}, 1)
 local Toggles = Library.Toggles
 local Options = Library.Options
 
@@ -1715,34 +1725,6 @@ local World_Camera = World_Tabbox:AddTab("Camera")
 local World_Lighting = World_Tabbox:AddTab("Lighting")
 local World_ViewModel = World_Tabbox:AddTab("ViewModel")
 
-Aiming_RageBot:AddToggle("RageBot_Enabled", {Text = "RageBot", Default = Aiming.RageBot_Enabled, Callback = function(Value)
-	UpdateTable(Aiming, "RageBot_Enabled", Value, function(Value)
-		IsRageBotInputActive = Value
-	end)
-end}):AddKeyPicker("RageBot_Keybind", {Default = Aiming.RageBot_Keybind, Mode = "Toggle", Text = "RageBot Keybind", Callback = function(Value)
-	UpdateTable(Aiming, "RageBot_Keybind", Value)
-	IsRageBotInputActive = Value
-end})
-
-local RageBotDependencyBox = Aiming_RageBot:AddDependencyBox():SetupDependencies({{Toggles.RageBot_Enabled, true}})
-RageBotDependencyBox:AddDropdown("RageBot_Part", {Text = "Part", Default = Aiming.RageBot_Part, Values = {"Head", "Torso", "Closest", "Priority"}, Callback = function(Value)
-	UpdateTable(Aiming, "RageBot_Part", Value)
-end})
-
-RageBotDependencyBox:AddDependencyBox():SetupDependencies({{Options.RageBot_Part, "Priority"}}):AddPrioritySelector("RageBot_HitboxPriorityOrder", {
-	Text = "Part Priorities", Default = Aiming.RageBot_HitboxPriorityOrder, Callback = function(Value)
-		Aiming.RageBot_HitboxPriorityOrder = Value
-	end
-})
-
-RageBotDependencyBox:AddToggle("RageBot_WallPenetrationDetection", {Text = "Wall Penetration Detection", Default = Aiming.RageBot_WallPenetrationDetection, Callback = function(Value)
-	UpdateTable(Aiming, "RageBot_WallPenetrationDetection", Value)
-end})
-
-RageBotDependencyBox:AddToggle("RageBot_IgnoreBulletTracers", {Text = "Ignore Bullet Tracers", Default = Aiming.RageBot_IgnoreBulletTracers, Callback = function(Value)
-	UpdateTable(Aiming, "RageBot_IgnoreBulletTracers", Value)
-end})
-
 Aiming_Aimbot:AddToggle("Aimbot_Enabled", {Text = "Aimbot", Default = Aiming.Aimbot_Enabled, Callback = function(Value)
 	UpdateTable(Aiming, "Aimbot_Enabled", Value, function(Value)
 		IsAimbotInputActive = Value
@@ -1754,7 +1736,7 @@ end})
 
 local AimbotDependencyBox = Aiming_Aimbot:AddDependencyBox():SetupDependencies({{Toggles.Aimbot_Enabled, true}})
 
-AimbotDependencyBox:AddDropdown("Aimbot_Type", {Text = "Type", Default = Aiming.Aimbot_Type, Values = {"Mouse", "Silent"}, Callback = function(Value)
+AimbotDependencyBox:AddDropdown("Aimbot_Type", {Text = "Type", Default = Aiming.Aimbot_Type, Values = {"Camera", "Mouse", "Silent"}, Callback = function(Value)
 	UpdateTable(Aiming, "Aimbot_Type", Value)
 end})
 
@@ -1768,7 +1750,7 @@ AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Part, 
 	end
 })
 
-AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Mouse"}}):AddSlider("Aimbot_Smoothness", {
+AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"Camera", "Mouse"}}}):AddSlider("Aimbot_Smoothness", {
 	Text = "Smoothness", Default = Aiming.Aimbot_Smoothness, Min = 1, Max = 10, Rounding = 0, Callback = function(Value)
 		UpdateTable(Aiming, "Aimbot_Smoothness", Value)
 	end
@@ -1809,6 +1791,34 @@ AimbotDependencyBox:AddToggle("Aimbot_TargetTracer", {Text = "Target Tracer", De
 	UpdateTable(Aiming, "Aimbot_TargetTracer", Value)
 end}):AddColorPicker("Aimbot_TargetTracerColor", {Default = Aiming.Aimbot_TargetTracerColor, Title = "Tracer Color", Callback = function(Value)
 	UpdateTable(Aiming, "Aimbot_TargetTracerColor", Value)
+end})
+
+Aiming_RageBot:AddToggle("RageBot_Enabled", {Text = "RageBot", Default = Aiming.RageBot_Enabled, Callback = function(Value)
+	UpdateTable(Aiming, "RageBot_Enabled", Value, function(Value)
+		IsRageBotInputActive = Value
+	end)
+end}):AddKeyPicker("RageBot_Keybind", {Default = Aiming.RageBot_Keybind, Mode = "Toggle", Text = "RageBot Keybind", Callback = function(Value)
+	UpdateTable(Aiming, "RageBot_Keybind", Value)
+	IsRageBotInputActive = Value
+end})
+
+local RageBotDependencyBox = Aiming_RageBot:AddDependencyBox():SetupDependencies({{Toggles.RageBot_Enabled, true}})
+RageBotDependencyBox:AddDropdown("RageBot_Part", {Text = "Part", Default = Aiming.RageBot_Part, Values = {"Head", "Torso", "Closest", "Priority"}, Callback = function(Value)
+	UpdateTable(Aiming, "RageBot_Part", Value)
+end})
+
+RageBotDependencyBox:AddDependencyBox():SetupDependencies({{Options.RageBot_Part, "Priority"}}):AddPrioritySelector("RageBot_HitboxPriorityOrder", {
+	Text = "Part Priorities", Default = Aiming.RageBot_HitboxPriorityOrder, Callback = function(Value)
+		Aiming.RageBot_HitboxPriorityOrder = Value
+	end
+})
+
+RageBotDependencyBox:AddToggle("RageBot_WallPenetrationDetection", {Text = "Wall Penetration Detection", Default = Aiming.RageBot_WallPenetrationDetection, Callback = function(Value)
+	UpdateTable(Aiming, "RageBot_WallPenetrationDetection", Value)
+end})
+
+RageBotDependencyBox:AddToggle("RageBot_IgnoreBulletTracers", {Text = "Ignore Bullet Tracers", Default = Aiming.RageBot_IgnoreBulletTracers, Callback = function(Value)
+	UpdateTable(Aiming, "RageBot_IgnoreBulletTracers", Value)
 end})
 
 local Miscellaneous_GunMods = Tabs.Miscellaneous:AddLeftGroupbox("Gun Mods")
@@ -1952,7 +1962,7 @@ end}):AddColorPicker("Combat_KillEffectColor", {Default = Visuals.Combat_KillEff
 	UpdateTable(Visuals, "Combat_KillEffectColor", Value)
 end})
 
-Visuals_CombatGroupbox:AddToggle("Combat_BulletTracers", {Text = "Bullet Tracers", Default = Visuals.Combat_BulletTracerColor, Callback = function(Value)
+Visuals_CombatGroupbox:AddToggle("Combat_BulletTracers", {Text = "Bullet Tracers", Default = Visuals.Combat_BulletTracers, Callback = function(Value)
 	UpdateTable(Visuals, "Combat_BulletTracers", Value)
 end}):AddColorPicker("Combat_BulletTracerColor", {Default = Visuals.Combat_BulletTracerColor, Title = "Tracer Color", Callback = function(Value)
 	UpdateTable(Visuals, "Combat_BulletTracerColor", Value)
@@ -2010,7 +2020,7 @@ HitMarkerDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Combat_Hit
 	end
 })
 
-Visuals_CombatGroupbox:AddToggle("Combat_GrenadeTrajectory", {Text = "Grenade Trajectory", Default = Visuals.Combat_GrenadeTrajectory, Callback = function(Value)
+Visuals_CombatGroupbox:AddToggle("Combat_GrenadeTrajectory", {Text = "Grenade Trajectory [BETA]", Default = Visuals.Combat_GrenadeTrajectory, Callback = function(Value)
 	UpdateTable(Visuals, "Combat_GrenadeTrajectory", Value)
 end}):AddColorPicker("Combat_GrenadeTrajectoryColor", {Default = Visuals.Combat_GrenadeTrajectoryColor, Title = "Trajectory Color", Callback = function(Value)
 	UpdateTable(Visuals, "Combat_GrenadeTrajectoryColor", Value)
@@ -2106,6 +2116,18 @@ end}):AddColorPicker("EnemyESP_BoxColor", {Default = Visuals.EnemyESP_BoxColor, 
 	UpdateTable(Visuals, "EnemyESP_BoxColor", Value)
 end})
 
+Visuals_EnemyESPGroupbox:AddToggle("EnemyESP_Healthbars", {Text = "Toggle Healthbars", Default = Visuals.EnemyESP_Healthbars, Callback = function(Value)
+	UpdateTable(Visuals, "EnemyESP_Healthbars", Value)
+end}):AddColorPicker("EnemyESP_HealthbarColor", {Default = Visuals.EnemyESP_HealthbarColor, Title = "Healthbar Color", Callback = function(Value)
+	UpdateTable(Visuals, "EnemyESP_HealthbarColor", Value)
+end})
+
+Visuals_EnemyESPGroupbox:AddDependencyBox():SetupDependencies({{Toggles.EnemyESP_Healthbars, true}}):AddSlider("EnemyESP_HealthbarWidth", {
+	Text = "Width", Default = Visuals.EnemyESP_HealthbarWidth, Min = 1, Max = 12, Rounding = 0, Callback = function(Value)
+		UpdateTable(Visuals, "EnemyESP_HealthbarWidth", Value)
+	end
+})
+
 Visuals_EnemyESPGroupbox:AddDependencyBox():SetupDependencies({{Toggles.EnemyESP_Boxes, true}}):AddSlider("EnemyESP_BoxThickness", {
 	Text = "Thickness", Default = Visuals.EnemyESP_BoxThickness, Min = 1, Max = 5, Rounding = 1, Callback = function(Value)
 		Visuals.EnemyESP_BoxThickness = Value
@@ -2157,7 +2179,7 @@ ThirdPersonDependencyBox:AddToggle("Camera_ThirdPersonShowCharacter", {Text = "S
 	UpdateTable(Visuals, "Camera_ThirdPersonShowCharacter", Value)
 end})
 
-local ShowCharacterDependencyBox = World_Camera:AddDependencyBox():SetupDependencies({{Toggles.Camera_ThirdPersonView, true}})
+local ShowCharacterDependencyBox = World_Camera:AddDependencyBox():SetupDependencies({{Toggles.Camera_ThirdPersonShowCharacter, true}})
 ShowCharacterDependencyBox:AddToggle("Camera_ThirdPersonShowCharacterWhileAiming", {Text = "Show Character While Aiming", Default = Visuals.Camera_ThirdPersonShowCharacterWhileAiming, Callback = function(Value)
 	UpdateTable(Visuals, "Camera_ThirdPersonShowCharacterWhileAiming", Value)
 end})
@@ -2194,10 +2216,8 @@ World_Camera:AddDependencyBox():SetupDependencies({{Toggles.Camera_FOVModificati
 
 World_ViewModel:AddToggle("Viewmodel_Chams", {Text = "Viewmodel Chams", Default = Visuals.Viewmodel_Chams, Callback = function(Value)
 	UpdateTable(Visuals, "Viewmodel_Chams", Value)
-	ViewmodelChamsDirty = true
 end}):AddColorPicker("Viewmodel_ChamsColor", {Default = Visuals.Viewmodel_ChamsColor, Title = "Chams Color", Callback = function(Value)
 	UpdateTable(Visuals, "Viewmodel_ChamsColor", Value)
-	ViewmodelChamsDirty = true
 end})
 
 local ViewmodelChamsDependencyBox = World_ViewModel:AddDependencyBox():SetupDependencies({{Toggles.Viewmodel_Chams, true}})
@@ -2206,17 +2226,17 @@ ViewmodelChamsDependencyBox:AddDropdown("Viewmodel_ChamsTargets", {Text = "Targe
 	UpdateTable(Visuals, "Viewmodel_ChamsTargets", Value)
 end})
 
-ViewmodelChamsDependencyBox:AddDropdown("Viewmodel_ChamsType", {Text = "Type", Default = Visuals.Viewmodel_ChamsType, Values = {"Highlight", "ForceField", "Neon", "Glass", "Plastic"}, Callback = function(Value)
+ViewmodelChamsDependencyBox:AddDropdown("Viewmodel_ChamsType", {Text = "Type", Default = Visuals.Viewmodel_ChamsType, Values = {"ForceField", "Neon", "Glass", "Plastic"}, Callback = function(Value)
 	UpdateTable(Visuals, "Viewmodel_ChamsType", Value)
 end})
 
-local ViewmodelTranslucentDependencyBox = ViewmodelChamsDependencyBox:AddDependencyBox():SetupDependencies({{Options.Viewmodel_ChamsType, {"Highlight", "Neon", "Glass", "Plastic"}}})
+local ViewmodelTranslucentDependencyBox = ViewmodelChamsDependencyBox:AddDependencyBox():SetupDependencies({{Options.Viewmodel_ChamsType, {"Neon", "Glass", "Plastic"}}})
 
 ViewmodelTranslucentDependencyBox:AddToggle("Viewmodel_ChamsTranslucent", {Text = "Translucent", Default = Visuals.Viewmodel_ChamsTranslucent, Callback = function(Value)
 	UpdateTable(Visuals, "Viewmodel_ChamsTranslucent", Value)
 end})
 
-World_ViewModel:AddToggle("Viewmodel_NoSleeves", {Text = "No Sleeves", Default = false, Callback = function(Value)
+World_ViewModel:AddToggle("Viewmodel_NoSleeves", {Text = "No Sleeves", Default = Visuals.Viewmodel_NoSleeves, Callback = function(Value)
 	UpdateTable(Visuals, "Viewmodel_NoSleeves", Value)
 end})
 
@@ -2949,8 +2969,7 @@ end)
 
 local FOVCircle = CreateDrawing("Circle", {Visible = false, Filled = false, Color = Aiming.Aimbot_FOVColor, Position = ScreenCenter, Thickness = 1})
 local TargetTracer = CreateDrawing("Line", {Visible = false, Color = Aiming.Aimbot_TargetTracerColor, Thickness = 1.5})
-local LastESPUpdateTime = 0
-local MoveMouse = mousemoverel or function() end
+local LastESPUpdateTime, ns__mousemoverel = 0, mousemoverel or function() end
 RunService.RenderStepped:Connect(function()
 	local Now, LocalHeadPosition = os.clock(), GetLocalPosition()
 	MouseLocation = UserInputService:GetMouseLocation()
@@ -3018,7 +3037,7 @@ RunService.RenderStepped:Connect(function()
 		if IsSpawned and IsAimbotInputActive then
 			local TargetPart, Target, IsTargetVisible, TargetScreen, ClosestScore = nil, nil, false, nil, math.huge
 			local FOVRadius, IsWallCheckOff = ShowFOV and Aiming.Aimbot_FOVRadius or math.huge, not Aiming.Aimbot_WallCheck
-			local AimbotPart, MouseX, MouseY = Aiming.Aimbot_Part, MouseLocation.X, MouseLocation.Y
+			local AimbotPart, CenterX, CenterY = Aiming.Aimbot_Part, ScreenCenter.X, ScreenCenter.Y
 
 			local function EvaluatePlayer(Player, Character)
 				local Torso = Character.Torso
@@ -3035,7 +3054,7 @@ RunService.RenderStepped:Connect(function()
 					return
 				end
 
-				DeltaX, DeltaY = Screen.X - MouseX, Screen.Y - MouseY
+				DeltaX, DeltaY = Screen.X - CenterX, Screen.Y - CenterY
 				local Distance = math.sqrt(DeltaX * DeltaX + DeltaY * DeltaY)
 				if Distance > FOVRadius then
 					return
@@ -3069,9 +3088,19 @@ RunService.RenderStepped:Connect(function()
 			AimbotTargetPart = TargetPart
 			IsAimbotTargetVisible = IsTargetVisible
 			if TargetPart then
-				if Aiming.Aimbot_Type == "Mouse" then
+				if Aiming.Aimbot_Type == "Mouse" and not Library.Toggled then
 					local Smoothness = Aiming.Aimbot_Smoothness
-					MoveMouse((TargetScreen.X - MouseX) / Smoothness, (TargetScreen.Y - MouseY) / Smoothness)
+					ns__mousemoverel((TargetScreen.X - ScreenCenterX) / Smoothness, (TargetScreen.Y - ScreenCenterY) / Smoothness)
+				elseif Aiming.Aimbot_Type == "Camera" then
+					local LookVector, Smoothness = (AimbotTargetPart.Position - Camera.CFrame.Position).Unit, Aiming.Aimbot_Smoothness
+					if Smoothness > 1 then
+						LookVector = (Camera.CFrame.LookVector:Lerp(LookVector, 1/Smoothness)).Unit
+					end
+
+					local ActiveCamera = GetActiveCamera()
+					if ActiveCamera then
+						ActiveCamera:setLookVector(LookVector)
+					end
 				end
 				IsLocking = true
 			end
@@ -3116,7 +3145,7 @@ RunService.RenderStepped:Connect(function()
 		end
 	end
 
-	if IsAimbotLocking and AimbotTargetPart and Aiming.Aimbot_TargetTracer then
+	if Aiming.Aimbot_TargetTracer and IsAimbotLocking and AimbotTargetPart then
 		local Barrel = GetActiveWeapon()
 		Barrel = Barrel and Barrel._barrelPart
 		if Barrel then
