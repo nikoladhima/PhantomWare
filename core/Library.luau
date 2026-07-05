@@ -3719,7 +3719,7 @@ function Library:CreateWindow(Configuration, IsParallel)
         if Toggled then
             Outer.Visible = true
             task.spawn(function()
-                local State = UserInputService.MouseIconEnabled;
+                local State = InputService.MouseIconEnabled
 
                 local Cursor = Drawing.new('Triangle')
                 Cursor.Thickness = 1
@@ -3732,16 +3732,13 @@ function Library:CreateWindow(Configuration, IsParallel)
                 CursorOutline.Color = Color3.new(0, 0, 0)
                 CursorOutline.Visible = true
 
-                local Connection; Connection = RenderStepped:Connect(function()
-                    if not Toggled or not ScreenGui.Parent then
-                        Connection:Disconnect()
-                        Connection = nil
-                    end
+                while Toggled and ScreenGui.Parent do
+                    InputService.MouseIconEnabled = false
 
-                    UserInputService.MouseIconEnabled = false
+                    local MouseLocation = InputService:GetMouseLocation()
+
                     Cursor.Color = Library.AccentColor
 
-                    local MouseLocation = UserInputService:GetMouseLocation()
                     Cursor.PointA = Vector2.new(MouseLocation.X, MouseLocation.Y)
                     Cursor.PointB = Vector2.new(MouseLocation.X + 16, MouseLocation.Y + 6)
                     Cursor.PointC = Vector2.new(MouseLocation.X + 6, MouseLocation.Y + 16)
@@ -3749,10 +3746,11 @@ function Library:CreateWindow(Configuration, IsParallel)
                     CursorOutline.PointA = Cursor.PointA
                     CursorOutline.PointB = Cursor.PointB
                     CursorOutline.PointC = Cursor.PointC
-                end)
 
-                UserInputService.MouseIconEnabled = State
+                    RenderStepped:Wait()
+                end
 
+                InputService.MouseIconEnabled = State
                 Cursor:Remove()
                 CursorOutline:Remove()
             end)
