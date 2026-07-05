@@ -176,7 +176,7 @@ local Aiming = {
 
 	Aimbot_ShowFOV = true,
 	Aimbot_FOVColor = Color3.fromRGB(255, 255, 255),
-	Aimbot_FOVAlpha = 0.5,
+	Aimbot_FOVOpacity = 0.5,
 	Aimbot_FOVRadius = 150,
 
 	Aimbot_TargetTracer = true,
@@ -1762,12 +1762,10 @@ end})
 
 AimbotDependencyBox:AddToggle("Aimbot_ShowFOV", {Text = "FOV Circle", Default = Aiming.Aimbot_ShowFOV, Callback = function(Value)
 	UpdateTable(Aiming, "Aimbot_ShowFOV", Value)
-end}):AddColorPicker("Aimbot_FOVColor", {Default = Aiming.Aimbot_FOVColor, Title = "FOV Color", Transparency = Aiming.Aimbot_FOVAlpha, Callback = function(Value)
+end}):AddColorPicker("Aimbot_FOVColor", {Default = Aiming.Aimbot_FOVColor, Title = "FOV Color", Transparency = Aiming.Aimbot_FOVOpacity}).Callback = function(Value)
 	UpdateTable(Aiming, "Aimbot_FOVColor", Value)
-	if Options["Aimbot_FOVColor"] then
-		UpdateTable(Aiming, "Aimbot_FOVAlpha", Options["Aimbot_FOVColor"].Transparency)
-	end
-end})
+	UpdateTable(Aiming, "Aimbot_FOVOpacity", 1 - Options.Aimbot_FOVColor.Transparency)
+end
 
 AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Aimbot_ShowFOV, true}}):AddSlider("Aimbot_FOVRadius", {
 	Text = "FOV Radius", Default = Aiming.Aimbot_FOVRadius, Min = 10, Max = 800, Rounding = 0, Callback = function(Value)
@@ -3016,7 +3014,7 @@ RunService.RenderStepped:Connect(function()
 		if ShowFOV then
 			SetProperty(FOVCircle, "Radius", Aiming.Aimbot_FOVRadius)
 			SetProperty(FOVCircle, "Color", Aiming.Aimbot_FOVColor)
-			SetProperty(FOVCircle, "Transparency", Aiming.Aimbot_FOVAlpha)
+			SetProperty(FOVCircle, "Transparency", Aiming.Aimbot_FOVOpacity)
 			SetProperty(FOVCircle, "Visible", true)
 		else
 			SetProperty(FOVCircle, "Visible", false)
@@ -3110,7 +3108,7 @@ RunService.RenderStepped:Connect(function()
 	if Visuals.EnemyESP_MasterEnabled then
 		local SkipFrame = false
 		if Settings.Advanced_ESPFramerateCap then
-			if Now - LastESPUpdateTime < 1 / Settings.Advanced_ESPFPSCapValue then
+			if Now - LastESPUpdateTime < 1/Settings.Advanced_ESPFPSCapValue then
 				SkipFrame = true
 			end
 		end
