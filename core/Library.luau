@@ -27,6 +27,8 @@ local Toggles = {}
 local Options = {}
 
 local Library = {
+    Toggled = true,
+
     Toggles = Toggles,
     Options = Options,
 
@@ -3715,6 +3717,7 @@ function Library:CreateWindow(Configuration, IsParallel)
         Fading = true
         Toggled = (not Toggled)
         ModalElement.Modal = Toggled
+        Library.Toggled = Toggled
 
         if Toggled then
             Outer.Visible = true
