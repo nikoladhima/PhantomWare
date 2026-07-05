@@ -1174,15 +1174,14 @@ function BulletObject.new(BulletData, ...)
 		end
 	end
 
+	local Bullet = NewBullet(BulletData)
 	if Visuals.Combat_BulletTracers then
 		CreateBulletTracer(BulletData.position, BulletData.velocity.Unit * 1500)
-		for _,Beam in next, NewBullet(BulletData)._beamObject.beams do
+		for _,Beam in next, Bullet._beamObject.beams do
 			Beam.Enabled = false
 		end
-		return
 	end
-
-	return NewBullet(BulletData)
+	return Bullet
 end
 
 local FlashlightPart = ns__cloneref(Instance.new("Part"))
