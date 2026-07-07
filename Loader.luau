@@ -13,7 +13,7 @@
 
 repeat task.wait(0.25) until game:IsLoaded()
 if workspace.DistributedGameTime < 3 then
-    task.wait(workspace.DistributedGameTime)
+    task.wait(3 - workspace.DistributedGameTime)
 end
 
 local Players = game:GetService("Players")
