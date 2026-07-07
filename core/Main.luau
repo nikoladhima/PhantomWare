@@ -78,7 +78,7 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
-local CoreGui = game:GetService("CoreGui")
+local CoreGui = ns__cloneref(game:GetService("CoreGui"))
 local Terrain = ns__cloneref(workspace.Terrain)
 
 local PlayersFolder = workspace:WaitForChild("Players", 9e9)
