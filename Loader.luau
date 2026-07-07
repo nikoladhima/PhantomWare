@@ -85,10 +85,7 @@ if Error and string.find(string.lower(tostring(Error)), "not allowed") then
     return LocalPlayer:Kick("Please check your executor's settings and allow 'setfflag'")
 end
 
-local Success, DebugRunParallelLuaOnMainThread = pcall(function()
-    return Getfflag("DebugRunParallelLuaOnMainThread")
-end)
-
+local Success, DebugRunParallelLuaOnMainThread = pcall(Getfflag, "DebugRunParallelLuaOnMainThread")
 if not Success then
     return LocalPlayer:Kick("Exploit not supported.\nReason: Error while calling function 'getfflag'")
 end
@@ -257,10 +254,7 @@ if QueueOnTeleport then
             task.wait(3 - workspace.DistributedGameTime)
         end
 
-        local Success, DebugRunParallelLuaOnMainThread = pcall(function()
-            return (getfflag or get_fflag)("DebugRunParallelLuaOnMainThread")
-        end)
-
+        local Success, DebugRunParallelLuaOnMainThread = pcall(getfflag or get_fflag, "DebugRunParallelLuaOnMainThread")
         if not Success then
            return LocalPlayer:Kick("Exploit not supported.\nReason: Error while calling function 'getfflag'")
         end
