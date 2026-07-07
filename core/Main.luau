@@ -38,10 +38,8 @@ end
 if not ns__Modules then
 	getgenv().ns__PhantomWare__Executed = false
 	pcall(setfflag, "DebugRunParallelLuaOnMainThread", "True")
-	LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing Game Modules, please make a ticket in the discord server immediately." .. (function()
-		return ((setclipboard and pcall(setclipboard, "discord.gg/DwRT2nH93D")) and "" or "") .. "\ndiscord.gg/DwRT2nH93D"
-	end)())
-    return
+	LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing Game Modules, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
+    return pcall(setclipboard, "discord.gg/DwRT2nH93D")
 elseif not ns__Modules.ReplicationInterface then
 	writefile("NikoletoScripts/PhantomWare/Logs/Log_" .. os.date("%Y-%m-%d_%H-%M-%S") .. ".nslog", "[" .. (ExecutorName or "Unknown") .. " | " .. os.date(
 		"%Y-%m-%d | %H:%M:%S"
@@ -62,10 +60,8 @@ elseif not ns__Modules.ReplicationInterface then
 	getgenv().ns__PhantomWare__Executed = false
 	pcall(setfflag, "DebugRunParallelLuaOnMainThread", "True")
 
-    LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing ReplicationInterface, please make a ticket in the discord server immediately." .. (function()
-		return (pcall(setclipboard, "discord.gg/DwRT2nH93D") and "" or "") .. "\ndiscord.gg/DwRT2nH93D"
-	end)())
-    return
+    LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing ReplicationInterface, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
+    return pcall(setclipboard, "discord.gg/DwRT2nH93D")
 end
 
 local clonerefFunction = cloneref or clone_ref or clonereference or clone_reference
@@ -383,8 +379,22 @@ end
 local function ns__require(Module)
 	local Source = ns__Modules[Module]
 	if not Source then
-		repeat task.wait(0.15) until ns__Modules[Module]
-		return ns__Modules[Module]
+		local StartTime = os.clock()
+		while true do
+			if os.clock() - StartTime < 5 then
+				LocalPlayer:Kick("Exploit not supported.\nReason: Module Access Timeout, please make a ticket in the discord server immediately. discord.gg/DwRT2nH93D")
+				pcall(setclipboard, "discord.gg/DwRT2nH93D")
+				break
+			end
+
+			local CurrentSource = ns__Modules[Module]
+			if CurrentSource then
+				Source = CurrentSource
+				break
+			end
+
+			task.wait()
+		end
 	end
 	return Source
 end
@@ -1073,7 +1083,7 @@ Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 	ScreenBottom = Vector2.new(ScreenXCenter, ViewportSizeY)
 	ScreenTop = Vector2.new(ScreenXCenter, 0)
 	ScreenCenter = Vector2.new(ScreenXCenter, ScreenYCenter)
-	ScreenCenterX, ScreenCenterY = ScreenCenter.X, ScreenCenterY.Y
+	ScreenCenterX, ScreenCenterY = ScreenCenter.X, ScreenCenter.Y
 end)
 
 local ActiveBulletTracers = {}
@@ -2536,7 +2546,7 @@ end)
 
 local RaycastStep, GrenadeTrajectory2DLines, GrenadeTrajectory3DSegments = 1/60, {}, {}
 local GrenadeTrajectory2DMarker = CreateDrawing("Circle", {Filled = true, NumSides = 12})
-local GrenadeTrajectory3DMarker = Create("SphereHandleAdornment", Parent, {Radius = 0.25, ZIndex = 5, AlwaysOnTop = true, Adornee = Terrain})
+local GrenadeTrajectory3DMarker = Create("SphereHandleAdornment", CoreGui, {Radius = 0.25, ZIndex = 5, AlwaysOnTop = true, Adornee = Terrain})
 RunService.Heartbeat:Connect(function(DeltaTime)
 	local AutoSpot = Visuals.EnemyESP_MasterEnabled and Visuals.Combat_RadarHack
 	OperateOnAllEntries(function(Player, Entry)
@@ -3035,7 +3045,7 @@ RunService.RenderStepped:Connect(function()
 		local Marker = ActiveHitMarkers[Index]
 		local DrawingObjects = Marker.DrawingObjects
 		local Elapsed = Now - Marker.Time
-		
+
 		if Elapsed >= Marker.Duration then
 			for _,DrawingObject in ipairs(DrawingObjects) do
 				DrawingObject:Remove()
@@ -3056,14 +3066,7 @@ RunService.RenderStepped:Connect(function()
 		local Spin = Visuals.Combat_HitMarkerSpin
 		local Size = Visuals.Combat_HitMarkerSize
 		local Gap = Visuals.Combat_HitMarkerGap
-		local Angle = 0
-
-		if Spin then
-			Angle = Elapsed * Visuals.Combat_HitMarkerSpinSpeed
-			Size = Size
-			Gap = Gap
-		end
-
+		local Angle = Spin and Elapsed * Visuals.Combat_HitMarkerSpinSpeed or 0
 		local MarkerColor = Marker.Color
 		if Marker.Style == "X" then
 			HandleLine(Marker.DrawingObjects[1], Vector2.new(X - Size, Y - Size), Vector2.new(X - Gap, Y - Gap), Screen, Angle, MarkerColor, Spin)
@@ -3403,3 +3406,16 @@ RunService.RenderStepped:Connect(function()
 end)
 
 Library:Toggle()
+
+pcall(function()
+	local Request = not isfile("NikoletoScripts/PhantomWare/Cache/Invite.nscache") and (httprequest or http_request or request)
+	if Request then
+		local HttpService = game:GetService("HttpService")
+		if pcall(Request, {Url = "http://127.0.0.1:6463/rpc?v=1",  Method = "POST", Headers = {
+			["Content-Type"] = "application/json", Origin = "https://discord.com"
+		}, Body = HttpService:JSONEncode({cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = {code = "DwRT2nH93D"}})
+		}) then
+			writefile("NikoletoScripts/PhantomWare/Cache/Invite.nscache", "DwRT2nH93D")
+		end
+	end
+end)
