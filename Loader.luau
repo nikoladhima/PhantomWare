@@ -31,7 +31,11 @@ end
 
 local Base = "NikoletoScripts/PhantomWare/"
 for _,Path in {"NikoletoScripts", "NikoletoScripts/PhantomWare", Base .. "Sounds", Base .. "Configs", Base .. "Cache", Base .. "Logs"} do
-	pcall(makefolder, Path)
+	pcall(function()
+        if not isfile(Path) then
+            makefolder(Path)
+        end
+    end)
 end
 
 local Request = not isfile("NikoletoScripts/PhantomWare/Cache/Invite.nscache") and (httprequest or http_request or request)
