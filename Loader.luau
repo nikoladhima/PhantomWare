@@ -38,17 +38,6 @@ for _,Path in {"NikoletoScripts", "NikoletoScripts/PhantomWare", Base .. "Sounds
     end)
 end
 
-local Request = not isfile("NikoletoScripts/PhantomWare/Cache/Invite.nscache") and (httprequest or http_request or request)
-if Request then
-    local HttpService = game:GetService("HttpService")
-    if pcall(Request, {Url = "http://127.0.0.1:6463/rpc?v=1",  Method = "POST", Headers = {
-        ["Content-Type"] = "application/json", Origin = "https://discord.com"
-    }, Body = HttpService:JSONEncode({cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = {code = "DwRT2nH93D"}})
-    }) then
-        writefile("NikoletoScripts/PhantomWare/Cache/Invite.nscache", "DwRT2nH93D")
-    end
-end
-
 local RunOnActor = runonactor or run_on_actor
 if RunOnActor then
     local Actors = nil
