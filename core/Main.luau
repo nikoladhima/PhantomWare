@@ -331,7 +331,11 @@ local Miscellaneous = {
 	RagdollEffects_Mode = "None",
 	RagdollEffects_LaunchForce = 150,
 	RagdollEffects_FlingForce = 150,
-	RagdollEffects_FloatSpeed = 10
+	RagdollEffects_FloatSpeed = 10,
+
+	ClientSessionUnlocks_AttachmentsUnlocked = false,
+	ClientSessionUnlocks_KnivesUnlocked = false,
+	ClientSessionUnlocks_CamosUnlocked = false
 }
 
 local Settings = {
@@ -386,15 +390,16 @@ local PlayerStatusInterface = ns__require("PlayerStatusInterface")
 local ReplicationInterface = ns__require("ReplicationInterface")
 local CharacterInterface = ns__require("CharacterInterface")
 local _,CameraInterface = coroutine.resume(coroutine.create(function(CameraInterface)
-	local Success, FunctionEnvironment = pcall(getfenv, CameraInterface.setCameraType)
-	if Success then
+	pcall(function()
+		local FunctionEnvironment = getfenv(CameraInterface.setCameraType)
 		FunctionEnvironment.warn = function() end
 		FunctionEnvironment.print = function() end
-	end
+	end)
 	return CameraInterface
 end), ns__require("CameraInterface"))
 
 local ReplicationObject = ns__require("ReplicationObject")
+local PlayerDataUtils = ns__require("PlayerDataUtils")
 local PublicSettings = ns__require("PublicSettings")
 local RecoilSprings = ns__require("RecoilSprings")
 local FirearmObject = ns__require("FirearmObject")
@@ -410,7 +415,6 @@ local NetworkClientSend = NetworkClient.send
 local GetLocalCharacter = CharacterInterface.getCharacterObject
 local GetActiveCamera = CameraInterface.getActiveCamera
 local PlayGameSound = AudioSystem.play
-local NewBullet = BulletObject.new
 local GetPlayerStatusEntry = PlayerStatusInterface.getEntry
 local GetPlayerEntry = ReplicationInterface.getEntry
 local OperateOnAllEntries = ReplicationInterface.operateOnAllEntries
@@ -578,7 +582,7 @@ local function GetCanSeeCache(Result, Layers)
 	return {Result, CanSeeFrameCounter, Layers}
 end
 
-local function CanSee(Part, Layers)
+function CanSee(Part, Layers)
 	local Entry = CanSeeCache[Part]
 	if Entry and Entry[2] == CanSeeFrameCounter and Entry[3] == Layers then
 		return Entry[1]
@@ -643,7 +647,7 @@ local function CanSee(Part, Layers)
 end
 
 local RageBotCache = {}
-local function RageBot_CanHit(Part, Layers)
+function RageBot_CanHit(Part, Layers)
 	local Entry = RageBotCache[Part]
 	if Entry and Entry[2] == CanSeeFrameCounter and Entry[3] == Layers then
 		return Entry[1]
@@ -705,7 +709,7 @@ local function RageBot_CanHit(Part, Layers)
 	return false
 end
 
-local function GetTargetPart(Character, AimbotPart, IsWallCheckOff)
+function GetTargetPart(Character, AimbotPart, IsWallCheckOff)
 	local Layers, Head, Torso, LeftArm, RightArm, LeftLeg, RightLeg = Settings.Advanced_MultiPointLayers, Character.Head, Character.Torso, Character["Left Arm"], Character["Right Arm"], Character["Left Leg"], Character["Right Leg"]
 	if AimbotPart == "Head" then
 		if not Head then
@@ -806,7 +810,7 @@ local function GetTargetPart(Character, AimbotPart, IsWallCheckOff)
 	return nil, nil, false
 end
 
-local function Silent_GetClosest()
+function Silent_GetClosest()
 	local IsWallCheckOff = not Aiming.Aimbot_WallCheck
 	local FOVRadius = Aiming.Aimbot_FOVRadius
 	local MaxScore, AimbotPart = Aiming.Aimbot_ShowFOV and FOVRadius or math.huge, Aiming.Aimbot_Part
@@ -844,6 +848,55 @@ local function Silent_GetClosest()
 	return BestPosition, BestEntry, BestPart
 end
 
+local HookRegistry = {}
+local function ns__hookfunction(Register, Table, Index, Replacement, Info)
+    local Helper, Original = Info and Info.Helper, Table[Index]
+    Table[Index] = Helper and ((Info and Info.ReturnOriginal) and function(...)
+		return Replacement(Helper, Original, ...)
+	end or function(...)
+		return Replacement(Helper, ...)
+	end) or ((Info and Info.ReturnOriginal) and function(...)
+		return Replacement(Original, ...)
+	end or Replacement)
+	HookRegistry[Index] = Register and {Table, Index, Original} or nil
+    return Original
+end
+local function ns__restorefunction(Identifier)
+	local Hook = HookRegistry[Identifier]
+	if not Hook then
+		return
+	end
+	Hook[1][Hook[2]] = Hook[3]
+	HookRegistry[Identifier] = nil
+end
+
+ns__hookfunction(false, RecoilSprings, "applyImpulse", function(Original, ...)
+	if Miscellaneous.GunMods_NoRecoil or (IsAimbotLocking and Aiming.Aimbot_Type ~= "Silent") then
+		return
+	end
+	return Original(...)
+end, {ReturnOriginal = true})
+
+ns__hookfunction(false, FirearmObject, "reload", function(Original, self, ...)
+	if IsRageBotInputActive or Miscellaneous.GunMods_InstantReload then
+		local SpareCount = self._spareCount
+		if SpareCount < 0 then
+			return Original(self)
+		end
+
+		local MagSizeData = self._weaponData.magsize
+		if SpareCount >= MagSizeData then
+			self._spareCount -= (MagSizeData - self._magCount)
+			self._magCount = MagSizeData
+		else
+			self._magCount = SpareCount
+			self._spareCount = 0
+		end
+		return NetworkClientSend(NetworkClient, "reload")
+	end
+	return Original(self)
+end, {ReturnOriginal = true})
+
 local TicketCache = {}
 local GlobalTicketCounter = 0
 local TicketAddition = 0
@@ -860,166 +913,151 @@ local FakeReplicationObject = nil
 local FakeThirdPersonObject = nil
 local IsAutoFiring = false
 
-task.spawn(function()
-	function NetworkClient:send(Type, ...)
-		if Type == "flaguser" or Type == "debug" or Type == "logmessage" then
-			return
-		elseif Type == "spawn" then
-			GlobalTicketCounter = 0
-			TicketAddition = 0
-			IsFakeSpawned = true
-			IsSpawned = true
-		elseif Type == "equip" then
-			if FakeThirdPersonObject then
-				local Slot = ...
-				FakeReplicationObject:setActiveIndex(Slot)
-				if Slot ~= 3 then
-					FakeThirdPersonObject:equip(Slot)
-				else
-					FakeThirdPersonObject:equipMelee()
+ns__hookfunction(false, NetworkClient, "send", function(self, Packet, ...)
+	if Packet == "flaguser" or Packet == "debug" or Packet == "logmessage" then
+		return
+	elseif Packet == "spawn" then
+		GlobalTicketCounter = 0
+		TicketAddition = 0
+		IsFakeSpawned = true
+		IsSpawned = true
+	elseif Packet == "equip" then
+		if FakeThirdPersonObject then
+			local Slot = ...
+			FakeReplicationObject:setActiveIndex(Slot)
+			if Slot ~= 3 then
+				FakeThirdPersonObject:equip(Slot)
+			else
+				FakeThirdPersonObject:equipMelee()
+			end
+		end
+	elseif Packet == "stab" and FakeThirdPersonObject then
+		FakeThirdPersonObject:stab()
+	elseif Packet == "aim" and FakeThirdPersonObject then
+		FakeThirdPersonObject:setAim(...)
+	elseif Packet == "sprint" and FakeThirdPersonObject then
+		FakeThirdPersonObject:setSprint(...)
+	elseif Packet == "stance" and FakeThirdPersonObject then
+		FakeThirdPersonObject:setStance(...)
+	elseif Packet == "newbullets" then
+		local UniqueId, BulletData, Time = ...
+		local Bullets = BulletData.bullets
+		GlobalTicketCounter = GlobalTicketCounter + #Bullets
+
+		for _,Bullet in BulletData.bullets do
+			Bullet[2] += TicketAddition
+		end
+
+		if IsAimbotInputActive and Aiming.Aimbot_Type == "Silent" then
+			if LastSilent.Target and (os.clock() - LastSilent.Frame < 0.1) then
+				local Direction = LastSilent.Velocity.Unit
+				for _,Bullet in next, Bullets do
+					Bullet[1] = Direction
 				end
-			end
-		elseif Type == "stab" and FakeThirdPersonObject then
-			FakeThirdPersonObject:stab()
-		elseif Type == "aim" and FakeThirdPersonObject then
-			FakeThirdPersonObject:setAim(...)
-		elseif Type == "sprint" and FakeThirdPersonObject then
-			FakeThirdPersonObject:setSprint(...)
-		elseif Type == "stance" and FakeThirdPersonObject then
-			FakeThirdPersonObject:setStance(...)
-		elseif Type == "newbullets" then
-			local UniqueId, BulletData, Time = ...
-			local Bullets = BulletData.bullets
-			GlobalTicketCounter = GlobalTicketCounter + #Bullets
-
-			for _,Bullet in BulletData.bullets do
-				Bullet[2] += TicketAddition
-			end
-
-			if IsAimbotInputActive and Aiming.Aimbot_Type == "Silent" then
-				if LastSilent.Target and (os.clock() - LastSilent.Frame < 0.1) then
-					local Direction = LastSilent.Velocity.Unit
-					for _,Bullet in next, Bullets do
-						Bullet[1] = Direction
-					end
-					LastSilent.Target = nil
-					LastSilent.Velocity = nil
-				else
-					local Target, Entry = Silent_GetClosest()
-					if Target and Entry then
-						local Player = Entry._player
-						if Target and MovementCache[Player] then
-							local Cache = MovementCache[Player]
-							local Current, Old, Velocity
-							if Cache then
-								Current = Cache[1]
-								Old = Cache[15]
-								
-								if Current and Old then
-									local CurrentTime, OldTime = Old.Time, Current.Time
-									if (CurrentTime - OldTime) > 0.01 then
-										Velocity = (Current.Position - Old.Position) / (CurrentTime - OldTime)
-									end
+				LastSilent.Target = nil
+				LastSilent.Velocity = nil
+			else
+				local Target, Entry = Silent_GetClosest()
+				if Target and Entry then
+					local Player = Entry._player
+					if Target and MovementCache[Player] then
+						local Cache = MovementCache[Player]
+						local Current, Old, Velocity
+						if Cache then
+							Current = Cache[1]
+							Old = Cache[15]
+							
+							if Current and Old then
+								local CurrentTime, OldTime = Old.Time, Current.Time
+								if (CurrentTime - OldTime) > 0.01 then
+									Velocity = (Current.Position - Old.Position) / (CurrentTime - OldTime)
 								end
 							end
+						end
 
-							local Weapon = GetActiveWeapon()
-							local ProjectileSpeed = BulletData.velocity and (
-								Weapon and Weapon._weaponData.bulletspeed or BulletData.velocity.Magnitude
-							) or 0
-							local Trajectory = (GetTrajectory(BulletData.firepos, PublicSettings.bulletAcceleration, Target, ProjectileSpeed, Velocity or Vector3.zero)).Unit
-							if Trajectory then
-								for _,Bullet in next, Bullets do
-									Bullet[1] = Trajectory
-								end
+						local Weapon = GetActiveWeapon()
+						local ProjectileSpeed = BulletData.velocity and (
+							Weapon and Weapon._weaponData.bulletspeed or BulletData.velocity.Magnitude
+						) or 0
+						local Trajectory = (GetTrajectory(BulletData.firepos, PublicSettings.bulletAcceleration, Target, ProjectileSpeed, Velocity or Vector3.zero)).Unit
+						if Trajectory then
+							for _,Bullet in next, Bullets do
+								Bullet[1] = Trajectory
 							end
 						end
 					end
 				end
 			end
+		end
 
-			if FakeThirdPersonObject then
-				FakeThirdPersonObject:kickWeapon(nil, nil, 0, 0)
-			end
+		if FakeThirdPersonObject then
+			FakeThirdPersonObject:kickWeapon(nil, nil, 0, 0)
+		end
 
-			return NetworkClientSend(self, Type, UniqueId, BulletData, Time)
-		elseif Type == "bullethit" then
-			local UniqueId, Player, Position, PartName, Ticket, Time = ...
-			Ticket += TicketAddition
+		return NetworkClientSend(self, Packet, UniqueId, BulletData, Time)
+	elseif Packet == "bullethit" then
+		local UniqueId, Player, Position, PartName, Ticket, Time = ...
+		Ticket += TicketAddition
 
-			if TicketCache[Ticket] then
-				return
-			end
-
-			TicketCache[Ticket] = true
-			return NetworkClientSend(self, Type, UniqueId, Player, Position, PartName, Ticket, Time)
-		elseif Type == "repupdate" then
-			local Position, Angles,_,Time = ...
-			if Angles and Miscellaneous.Movement_AntiAimEnabled then
-				local X, Y, Z = Angles.X, Angles.Y, Angles.Z
-				if Miscellaneous.Movement_AntiAimPitch then
-					local Addition = math.rad(Miscellaneous.Movement_AntiAimPitchAmount) - Quarter
-					X = Miscellaneous.Movement_AntiAimPitchMode == "Absolute" and Addition or math.clamp(X + Addition, NegativeQuarter, Quarter)
-				end
-
-				if Miscellaneous.Movement_AntiAimYaw then
-					local Addition = math.rad(Miscellaneous.Movement_AntiAimYawAmount)
-					Y = Miscellaneous.Movement_AntiAimYawMode == "Relative" and (Y + Addition) or Addition
-				end
-
-				if Miscellaneous.Movement_AntiAimSpinBot then
-					Y += ((os.clock() * math.rad(Miscellaneous.Movement_AntiAimSpinSpeed)) % TwoPi) * (Miscellaneous.Movement_AntiAimSpinDirection == "Left" and 1 or -1)
-				end
-
-				if Miscellaneous.Movement_AntiAimJitter then
-					Y += (math.floor(os.clock() * Miscellaneous.Movement_AntiAimJitterSpeed) % 2 == 0) and math.pi or 0
-				end
-
-				Angles = Vector3.new(X, Y, Z)
-				return NetworkClientSend(self, Type, Position, Angles, Angles * 0.99, Time)
-			end
-		elseif Type == "falldamage" and Miscellaneous.Movement_NoFallDamage then
+		if TicketCache[Ticket] then
 			return
 		end
-		return NetworkClientSend(self, Type, ...)
+
+		TicketCache[Ticket] = true
+		return NetworkClientSend(self, Packet, UniqueId, Player, Position, PartName, Ticket, Time)
+	elseif Packet == "repupdate" then
+		local Position, Angles,_,Time = ...
+		if Angles and Miscellaneous.Movement_AntiAimEnabled then
+			local X, Y, Z = Angles.X, Angles.Y, Angles.Z
+			if Miscellaneous.Movement_AntiAimPitch then
+				local Addition = math.rad(Miscellaneous.Movement_AntiAimPitchAmount) - Quarter
+				X = Miscellaneous.Movement_AntiAimPitchMode == "Absolute" and Addition or math.clamp(X + Addition, NegativeQuarter, Quarter)
+			end
+
+			if Miscellaneous.Movement_AntiAimYaw then
+				local Addition = math.rad(Miscellaneous.Movement_AntiAimYawAmount)
+				Y = Miscellaneous.Movement_AntiAimYawMode == "Relative" and (Y + Addition) or Addition
+			end
+
+			if Miscellaneous.Movement_AntiAimSpinBot then
+				Y += ((os.clock() * math.rad(Miscellaneous.Movement_AntiAimSpinSpeed)) % TwoPi) * (Miscellaneous.Movement_AntiAimSpinDirection == "Left" and 1 or -1)
+			end
+
+			if Miscellaneous.Movement_AntiAimJitter then
+				Y += (math.floor(os.clock() * Miscellaneous.Movement_AntiAimJitterSpeed) % 2 == 0) and math.pi or 0
+			end
+
+			Angles = Vector3.new(X, Y, Z)
+			return NetworkClientSend(self, Packet, Position, Angles, Angles * 0.99, Time)
+		end
+	elseif (Packet == "falldamage" and Miscellaneous.Movement_NoFallDamage) or (Packet == "changeCamo" and Miscellaneous.ClientSessionUnlocks_CamosUnlocked) or (Packet == "changeWeapon" and (...) == "Knife" and Miscellaneous.ClientSessionUnlocks_KnivesUnlocked) or (Packet == "changeAttachment" and Miscellaneous.ClientSessionUnlocks_AttachmentsUnlocked) then
+		return
 	end
+	return NetworkClientSend(self, Packet, ...)
 end)
 
-local ApplyImpulse = RecoilSprings.applyImpulse
-RecoilSprings.applyImpulse = function(...)
-	return not Miscellaneous.GunMods_NoRecoil and not IsAimbotLocking and ApplyImpulse(...)
-end
-
-local ComputeWalkSway = FirearmObject.computeWalkSway
-FirearmObject.computeWalkSway = function(self, ...)
-	return Miscellaneous.GunMods_NoWalkSway and ComputeWalkSway(self, 0, 0) or ComputeWalkSway(self, ...)
-end
-
-local ComputeGunSway = FirearmObject.computeGunSway
-FirearmObject.computeGunSway = function(...)
-	return Miscellaneous.GunMods_NoGunSway and CFrame.identity or ComputeGunSway(...)
-end
-
-local Reload = FirearmObject.reload
-FirearmObject.reload = function(self)
-	if IsRageBotInputActive or Miscellaneous.GunMods_InstantReload then
-		local SpareCount = self._spareCount
-		if SpareCount < 0 then
-			return Reload(self)
-		end
-
-		local MagSizeData = self._weaponData.magsize
-		if SpareCount >= MagSizeData then
-			self._spareCount -= (MagSizeData - self._magCount)
-			self._magCount = MagSizeData
-		else
-			self._magCount = SpareCount
-			self._spareCount = 0
-		end
-		return NetworkClientSend(NetworkClient, "reload")
+ns__hookfunction(false, PlayerDataUtils, "getUnlocksData", function(Helper, Original, PlayerData)
+	local Unlocks = Original(PlayerData)
+	if Miscellaneous.ClientSessionUnlocks_AttachmentsUnlocked and PlayerData == Helper() then
+		local OldUnlocks = Unlocks
+		Unlocks = setmetatable({}, {
+			__index = function(_,Index)
+				local Unlock = OldUnlocks[Index] or {}
+				Unlock.kills = 1000000000
+				OldUnlocks[Index] = Unlock
+				return Unlock
+			end, __newindex = function(_,Index, Value)
+				OldUnlocks[Index] = Value
+				return
+			end
+		})
 	end
-	return Reload(self)
-end
+	return Unlocks
+end, {Helper = PlayerDataClientInterface.getPlayerData, ReturnOriginal = true})
+
+ns__hookfunction(false, PlayerDataUtils, "ownsWeapon", function(Helper, Original, Player, WeaponName)
+	return (Miscellaneous.ClientSessionUnlocks_KnivesUnlocked and Helper(WeaponName).baseWeaponData.type == "KNIFE") and true or Original(Player, WeaponName)
+end, {Helper = ns__require("ContentInterface").getWeaponSource, ReturnOriginal = true})
 
 Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 	ViewportSize = Camera.ViewportSize
@@ -1053,21 +1091,20 @@ local CustomSounds = {
 	["TF2 Frying Pan"] = "rbxassetid://18922477538"
 }
 
-local PlaySoundId = AudioSystem.playSoundId
-function AudioSystem.playSoundId(AssetId, Priority, Volume, Pitch, Part, MaxPartDistance, PitchRange, RandomPitch, EmitterSize, RollOffMode, PlayOnRemove, Looped)
+local PlaySoundId
+PlaySoundId = ns__hookfunction(false, AudioSystem, "playSoundId", function(AssetId, Priority, Volume, ...)
 	local ShootSound = Miscellaneous.SoundOverride_ShootSound
 	if ShootSound == "None" then
-		return PlaySoundId(AssetId, Priority, Volume, Pitch, Part, MaxPartDistance, PitchRange, RandomPitch, EmitterSize, RollOffMode, PlayOnRemove, Looped)
+		return PlaySoundId(AssetId, Priority, Volume, ...)
 	end
 
 	local ActiveWeapon = GetActiveWeapon()
 	if ActiveWeapon and AssetId == ActiveWeapon._weaponData.firesoundid then
 		return PlaySoundId(CustomSounds[ShootSound], Priority, Volume)
 	end
-end
+end)
 
-local PlaySound = AudioSystem.playSound
-function AudioSystem.playSound(SoundName, ...)
+ns__hookfunction(false, AudioSystem, "playSound", function(Original, SoundName, ...)
 	local Arguments = table.pack(...)
 	if Miscellaneous.SoundOverride_HitSound ~= "None" and SoundName == "hitmarker" then
 		return PlaySoundId(CustomSounds[Miscellaneous.SoundOverride_HitSound], 1, Arguments[3])
@@ -1076,8 +1113,8 @@ function AudioSystem.playSound(SoundName, ...)
 	elseif Miscellaneous.SoundOverride_GotHitSound ~= "None" and (SoundName == "crackSmall" or SoundName == "crackBig") then
 		return PlaySoundId(CustomSounds[Miscellaneous.SoundOverride_GotHitSound], 1, Arguments[3])
 	end
-	return PlaySound(SoundName, ...)
-end
+	return Original(SoundName, ...)
+end, {ReturnOriginal = true})
 
 local BeamCache = {}
 local function ReleaseBeam(Beam)
@@ -1145,9 +1182,9 @@ local function CreateBulletTracer(StartPosition, Direction)
 	})
 end
 
-function BulletObject.new(BulletData, ...)
+ns__hookfunction(false, BulletObject, "new", function(Original, BulletData, ...)
 	if not BulletData.onplayerhit then
-		return NewBullet(BulletData)
+		return Original(BulletData)
 	end
 
 	if IsAimbotInputActive and Aiming.Aimbot_Type == "Silent" then
@@ -1176,7 +1213,7 @@ function BulletObject.new(BulletData, ...)
 		end
 	end
 
-	local Bullet = NewBullet(BulletData)
+	local Bullet = Original(BulletData)
 	if Visuals.Combat_BulletTracers then
 		CreateBulletTracer(BulletData.position, BulletData.velocity.Unit * 1500)
 		for _,Beam in next, Bullet._beamObject.beams do
@@ -1184,7 +1221,7 @@ function BulletObject.new(BulletData, ...)
 		end
 	end
 	return Bullet
-end
+end, {ReturnOriginal = true})
 
 local FlashlightPart = ns__cloneref(Instance.new("Part"))
 FlashlightPart.Anchored = true
@@ -1269,19 +1306,18 @@ for _,Child in next, IgnoreFolder:GetChildren() do
 	end
 end
 
-local Step = ScreenCull.step
-function ScreenCull.step(...)
-	Step(...)
+ns__hookfunction(false, ScreenCull, "step", function(Original, ...)
+	Original(...)
 
 	if IsThirdPersonActive then
 		local CameraOffset = Vector3.new(Visuals.Camera_ThirdPersonOffsetX, Visuals.Camera_ThirdPersonOffsetY, Visuals.Camera_ThirdPersonOffsetZ)
 		local DidCollide = false
 
 		if Visuals.Camera_ThirdPersonCameraCollision and CameraOffset.Magnitude > 0 then
-			local OldPosition = Camera.CFrame.Position
-			local Raycast = workspace:Raycast(OldPosition, (Camera.CFrame * CFrame.new(CameraOffset)).Position - OldPosition, AimingRaycastParams)
+			local OriginalPosition = Camera.CFrame.Position
+			local Raycast = workspace:Raycast(OriginalPosition, (Camera.CFrame * CFrame.new(CameraOffset)).Position - OriginalPosition, AimingRaycastParams)
 			if Raycast then
-				Camera.CFrame *= CFrame.new(CameraOffset * ((Raycast.Position - OldPosition).Magnitude / CameraOffset.Magnitude) * 0.99)
+				Camera.CFrame *= CFrame.new(CameraOffset * ((Raycast.Position - OriginalPosition).Magnitude / CameraOffset.Magnitude) * 0.99)
 				DidCollide = true
 			end
 		end
@@ -1294,7 +1330,7 @@ function ScreenCull.step(...)
 	if Visuals.Camera_FOVModificationEnabled then
 		Camera.FieldOfView = Visuals.Camera_FOVValue
 	end
-end
+end, {ReturnOriginal = true})
 
 IgnoreFolder.ChildAdded:Connect(function(Child)
 	local Humanoid = Child:IsA("Model") and (Child:FindFirstChildOfClass("Humanoid") or Child:WaitForChild("Humanoid", 2))
@@ -1322,20 +1358,21 @@ DeadBodyFolder.ChildAdded:Connect(function(Child)
 
 		if RagdollMode == "Launch" then
 			Torso.AssemblyLinearVelocity = Vector3.new(math.random(-15, 15), Miscellaneous.RagdollEffects_LaunchForce, math.random(-15, 15))
-		elseif RagdollMode == "Float" then
-			Torso.AssemblyLinearVelocity = Vector3.new(0, Miscellaneous.RagdollEffects_FloatSpeed, 0)
-			for _,Child in next, Child:GetChildren() do
-				if Child:IsA("BasePart") then
-					local AntiGravity = ns__cloneref(Instance.new("BodyForce"))
-					AntiGravity.Name = HttpService:GenerateGUID(false)
-					AntiGravity.Force = Vector3.new(0, Child:GetMass() * workspace.Gravity, 0)
-					AntiGravity.Parent = Child
-				end
-			end
 		elseif RagdollMode == "Fling" then
 			local Force = Miscellaneous.RagdollEffects_FlingForce
 			Torso.AssemblyLinearVelocity = Vector3.new(math.random(-Force, Force), math.random(0, Force), math.random(-Force, Force))
 			Torso.AssemblyAngularVelocity = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100))
+			return
+		end
+
+		Torso.AssemblyLinearVelocity = Vector3.new(0, Miscellaneous.RagdollEffects_FloatSpeed, 0)
+		for _,Child in next, Child:GetChildren() do
+			if Child:IsA("BasePart") then
+				local AntiGravity = ns__cloneref(Instance.new("BodyForce"))
+				AntiGravity.Name = HttpService:GenerateGUID(false)
+				AntiGravity.Force = Vector3.new(0, Child:GetMass() * workspace.Gravity, 0)
+				AntiGravity.Parent = Child
+			end
 		end
 	end
 end)
@@ -1717,8 +1754,8 @@ Aiming_Aimbot:AddToggle("Aimbot_Enabled", {Text = "Aimbot", Default = Aiming.Aim
 	UpdateTable(Aiming, "Aimbot_Enabled", Value, function(Value)
 		IsAimbotInputActive = Value
 	end)
-end}):AddKeyPicker("Aimbot_Keybind", {Default = Aiming.Aimbot_Keybind, Mode = "Toggle", Text = "Aiming Keybind", ChangedCallback = function(Key)
-	UpdateTable(Aiming, "Aimbot_Keybind", Key)
+end}):AddKeyPicker("Aimbot_Keybind", {Default = Aiming.Aimbot_Keybind, Mode = "Toggle", Text = "Aiming Keybind", ChangedCallback = function(Keybind)
+	UpdateTable(Aiming, "Aimbot_Keybind", Keybind)
 end, Callback = function(Value)
 	IsAimbotInputActive = Value
 end})
@@ -1784,8 +1821,8 @@ Aiming_RageBot:AddToggle("RageBot_Enabled", {Text = "RageBot", Default = Aiming.
 	UpdateTable(Aiming, "RageBot_Enabled", Value, function(Value)
 		IsRageBotInputActive = Value
 	end)
-end}):AddKeyPicker("RageBot_Keybind", {Default = Aiming.RageBot_Keybind, Mode = "Toggle", Text = "RageBot Keybind", ChangedCallback = function(Key)
-	UpdateTable(Aiming, "RageBot_Keybind", Key)
+end}):AddKeyPicker("RageBot_Keybind", {Default = Aiming.RageBot_Keybind, Mode = "Toggle", Text = "RageBot Keybind", ChangedCallback = function(Keybind)
+	UpdateTable(Aiming, "RageBot_Keybind", Keybind)
 end, Callback = function(Value)
 	IsRageBotInputActive = Value
 end})
@@ -1812,10 +1849,26 @@ end})
 local Miscellaneous_GunMods = Tabs.Miscellaneous:AddLeftGroupbox("Gun Mods")
 
 Miscellaneous_GunMods:AddToggle("GunMods_NoWalkSway", {Text = "No Walk Sway", Default = Miscellaneous.GunMods_NoWalkSway, Callback = function(Value)
+	if not Value then
+		return ns__restorefunction("computeWalkSway")
+	end
+
+	ns__hookfunction(true, FirearmObject, "computeWalkSway", function(Original, self, ...)
+		return Original(self, 0, 0)
+	end, {ReturnOriginal = true})
+
 	UpdateTable(Miscellaneous, "GunMods_NoWalkSway", Value)
 end})
 
 Miscellaneous_GunMods:AddToggle("GunMods_NoGunSway", {Text = "No Gun Sway", Default = Miscellaneous.GunMods_NoGunSway, Callback = function(Value)
+	if not Value then
+		return ns__restorefunction("computeGunSway")
+	end
+
+	ns__hookfunction(true, FirearmObject, "computeGunSway", function(Original, self, ...)
+		return CFrame.identity
+	end, {ReturnOriginal = true})
+
 	UpdateTable(Miscellaneous, "GunMods_NoGunSway", Value)
 end})
 
@@ -1827,98 +1880,12 @@ Miscellaneous_GunMods:AddToggle("GunMods_InstantReload", {Text = "Instant Reload
 	UpdateTable(Miscellaneous, "GunMods_InstantReload", Value)
 end})
 
-local Miscellaneous_Movement = Tabs.Miscellaneous:AddRightGroupbox("Movement")
-
-Miscellaneous_Movement:AddToggle("Movement_NoFallDamage", {Text = "No Fall Damage", Default = Miscellaneous.Movement_NoFallDamage, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_NoFallDamage", Value)
-end})
-
-Miscellaneous_Movement:AddToggle("Movement_BunnyHop", {Text = "Bunny Hop [May Despawn]", Default = Miscellaneous.Movement_BunnyHop, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_BunnyHop", Value)
-end})
-
-Miscellaneous_Movement:AddToggle("Movement_AntiAimEnabled", {Text = "Anti Aim", Default = Miscellaneous.Movement_AntiAimEnabled, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimEnabled", Value)
-end})
-
-local AntiAimDependencyBox = Miscellaneous_Movement:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimEnabled, true}})
-
-AntiAimDependencyBox:AddToggle("Movement_AntiAimYaw", {Text = "Yaw", Default = Miscellaneous.Movement_AntiAimYaw, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimYaw", Value)
-end})
-
-local YawDependencyBox = AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimYaw, true}})
-
-YawDependencyBox:AddSlider("Movement_AntiAimYawAmount", {Text = "Yaw Amount", Default = Miscellaneous.Movement_AntiAimYawAmount, Min = 0, Max = 360, Rounding = 0, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimYawAmount", Value)
-end})
-
-YawDependencyBox:AddDropdown("Movement_AntiAimYawMode", {Text = "Yaw Mode", Default = Miscellaneous.Movement_AntiAimYawMode, Values = {"Relative", "Absolute"}, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimYawMode", Value)
-end})
-
-AntiAimDependencyBox:AddToggle("Movement_AntiAimPitch", {Text = "Pitch", Default = Miscellaneous.Movement_AntiAimPitch, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimPitch", Value)
-end})
-
-local PitchDependencyBox = AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimPitch, true}})
-
-PitchDependencyBox:AddSlider("Movement_AntiAimPitchAmount", {Text = "Pitch Amount", Default = Miscellaneous.Movement_AntiAimPitchAmount, Min = 0, Max = 180, Rounding = 0, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimPitchAmount", Value)
-end})
-
-PitchDependencyBox:AddDropdown("Movement_AntiAimPitchMode", {Text = "Pitch Mode", Default = Miscellaneous.Movement_AntiAimPitchMode, Values = {"Relative", "Absolute"}, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimPitchMode", Value)
-end})
-
-AntiAimDependencyBox:AddToggle("Movement_AntiAimJitter", {Text = "Jitter", Default = Miscellaneous.Movement_AntiAimJitter, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimJitter", Value)
-end})
-
-AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimJitter, true}}):AddSlider("Movement_AntiAimJitterSpeed", {
-	Text = "Jitter Speed", Default = Miscellaneous.Movement_AntiAimJitterSpeed, Min = 1, Max = 1000, Rounding = 0, Callback = function(Value)
-		UpdateTable(Miscellaneous, "Movement_AntiAimJitterSpeed", Value)
-	end
-})
-
-AntiAimDependencyBox:AddToggle("Movement_AntiAimSpinBot", {Text = "Spin Bot", Default = Miscellaneous.Movement_AntiAimSpinBot, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimSpinBot", Value)
-end})
-
-local SpinBotDependencyBox = AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimSpinBot, true}})
-
-SpinBotDependencyBox:AddDropdown("Movement_AntiAimSpinDirection", {Text = "Spin Direction", Default = Miscellaneous.Movement_AntiAimSpinDirection, Values = {"Left", "Right"}, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimSpinDirection", Value)
-end})
-
-SpinBotDependencyBox:AddSlider("Movement_AntiAimSpinSpeed", {Text = "Spin Speed", Default = Miscellaneous.Movement_AntiAimSpinSpeed, Min = 1, Max = 1000, Rounding = 0, Callback = function(Value)
-	UpdateTable(Miscellaneous, "Movement_AntiAimSpinSpeed", Value)
-end})
-
-local RagdollsEffects_Groupbox = Tabs.Miscellaneous:AddRightGroupbox("Ragdoll Effects")
-
-RagdollsEffects_Groupbox:AddDropdown("RagdollEffects_Mode", {Text = "Ragdoll Mode", Default = Miscellaneous.RagdollEffects_Mode, Values = {"None", "Launch", "Fling", "Float"}, Callback = function(Value)
-	UpdateTable(Miscellaneous, "RagdollEffects_Mode", Value)
-end})
-
-RagdollsEffects_Groupbox:AddDependencyBox():SetupDependencies({{Options.RagdollEffects_Mode, "Launch"}}):AddSlider("RagdollEffects_LaunchForce", {Text = "Launch Force", Default = Miscellaneous.RagdollEffects_LaunchForce, Min = 50, Max = 500, Rounding = 0, Callback = function(Value)
-	UpdateTable(Miscellaneous, "RagdollEffects_LaunchForce", Value)
-end})
-
-RagdollsEffects_Groupbox:AddDependencyBox():SetupDependencies({{Options.RagdollEffects_Mode, "Fling"}}):AddSlider("RagdollEffects_FlingForce", {Text = "Fling Force", Default = Miscellaneous.RagdollEffects_FlingForce, Min = 100, Max = 500, Rounding = 0, Callback = function(Value)
-	UpdateTable(Miscellaneous, "RagdollEffects_FlingForce", Value)
-end})
-
-RagdollsEffects_Groupbox:AddDependencyBox():SetupDependencies({{Options.RagdollEffects_Mode, "Float"}}):AddSlider("RagdollEffects_FloatSpeed", {Text = "Float Speed", Default = Miscellaneous.RagdollEffects_FloatSpeed, Min = 1, Max = 100, Rounding = 0, Callback = function(Value)
-	UpdateTable(Miscellaneous, "RagdollEffects_FloatSpeed", Value)
-end})
-
-local HitLogs_s = Tabs.Miscellaneous:AddLeftGroupbox("Hit Logs")
-
-HitLogs_s:AddToggle("HitLogs_Enabled", {Text = "Hit Logs", Default = Miscellaneous.HitLogs_Enabled, Callback = function(Value)
+local HitLogs_GroupBox = Tabs.Miscellaneous:AddLeftGroupbox("Hit Logs")
+HitLogs_GroupBox:AddToggle("HitLogs_Enabled", {Text = "Hit Logs", Default = Miscellaneous.HitLogs_Enabled, Callback = function(Value)
 	UpdateTable(Miscellaneous, "HitLogs_Enabled", Value)
 end})
-local HitLogs_DependencyBox = HitLogs_s:AddDependencyBox():SetupDependencies({{Toggles.HitLogs_Enabled, true}})
+
+local HitLogs_DependencyBox = HitLogs_GroupBox:AddDependencyBox():SetupDependencies({{Toggles.HitLogs_Enabled, true}})
 HitLogs_DependencyBox:AddToggle("HitLogs_ShowDamage", {Text = "Show Damage", Default = Miscellaneous.HitLogs_ShowDamage, Callback = function(Value)
 	UpdateTable(Miscellaneous, "HitLogs_ShowDamage", Value)
 end})
@@ -1927,21 +1894,85 @@ HitLogs_DependencyBox:AddToggle("HitLogs_ShowDistance", {Text = "Show Distance",
 end})
 
 local SoundOverride_Groupbox = Tabs.Miscellaneous:AddLeftGroupbox("Sound Override")
-
 SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {Text = "Shoot", Default = Miscellaneous.SoundOverride_ShootSound, Values = SoundOptions, Callback = function(Value)
 	UpdateTable(Miscellaneous, "SoundOverride_ShootSound", Value)
 end})
-
 SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {Text = "Hit", Default = Miscellaneous.SoundOverride_HitSound, Values = SoundOptions, Callback = function(Value)
 	UpdateTable(Miscellaneous, "SoundOverride_HitSound", Value)
 end})
-
 SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {Text = "Kill", Default = Miscellaneous.SoundOverride_KillSound, Values = SoundOptions, Callback = function(Value)
 	UpdateTable(Miscellaneous, "SoundOverride_KillSound", Value)
 end})
-
 SoundOverride_Groupbox:AddDropdown("SoundOverride_GotHitSound", {Text = "Hurt", Default = Miscellaneous.SoundOverride_GotHitSound, Values = SoundOptions, Callback = function(Value)
 	UpdateTable(Miscellaneous, "SoundOverride_GotHitSound", Value)
+end})
+
+local RagdollsEffects_Groupbox = Tabs.Miscellaneous:AddLeftGroupbox("Ragdoll Effects")
+RagdollsEffects_Groupbox:AddDropdown("RagdollEffects_Mode", {Text = "Ragdoll Mode", Default = Miscellaneous.RagdollEffects_Mode, Values = {"None", "Launch", "Fling", "Float"}, Callback = function(Value)
+	UpdateTable(Miscellaneous, "RagdollEffects_Mode", Value)
+end})
+RagdollsEffects_Groupbox:AddDependencyBox():SetupDependencies({{Options.RagdollEffects_Mode, "Launch"}}):AddSlider("RagdollEffects_LaunchForce", {Text = "Launch Force", Default = Miscellaneous.RagdollEffects_LaunchForce, Min = 50, Max = 500, Rounding = 0, Callback = function(Value)
+	UpdateTable(Miscellaneous, "RagdollEffects_LaunchForce", Value)
+end})
+RagdollsEffects_Groupbox:AddDependencyBox():SetupDependencies({{Options.RagdollEffects_Mode, "Fling"}}):AddSlider("RagdollEffects_FlingForce", {Text = "Fling Force", Default = Miscellaneous.RagdollEffects_FlingForce, Min = 100, Max = 500, Rounding = 0, Callback = function(Value)
+	UpdateTable(Miscellaneous, "RagdollEffects_FlingForce", Value)
+end})
+RagdollsEffects_Groupbox:AddDependencyBox():SetupDependencies({{Options.RagdollEffects_Mode, "Float"}}):AddSlider("RagdollEffects_FloatSpeed", {Text = "Float Speed", Default = Miscellaneous.RagdollEffects_FloatSpeed, Min = 1, Max = 100, Rounding = 0, Callback = function(Value)
+	UpdateTable(Miscellaneous, "RagdollEffects_FloatSpeed", Value)
+end})
+
+local Miscellaneous_Movement = Tabs.Miscellaneous:AddRightGroupbox("Movement")
+Miscellaneous_Movement:AddToggle("Movement_NoFallDamage", {Text = "No Fall Damage", Default = Miscellaneous.Movement_NoFallDamage, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_NoFallDamage", Value)
+end})
+Miscellaneous_Movement:AddToggle("Movement_BunnyHop", {Text = "Bunny Hop [May Despawn]", Default = Miscellaneous.Movement_BunnyHop, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_BunnyHop", Value)
+end})
+Miscellaneous_Movement:AddToggle("Movement_AntiAimEnabled", {Text = "Anti Aim", Default = Miscellaneous.Movement_AntiAimEnabled, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimEnabled", Value)
+end})
+
+local AntiAimDependencyBox = Miscellaneous_Movement:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimEnabled, true}})
+AntiAimDependencyBox:AddToggle("Movement_AntiAimYaw", {Text = "Yaw", Default = Miscellaneous.Movement_AntiAimYaw, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimYaw", Value)
+end})
+
+local YawDependencyBox = AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimYaw, true}})
+YawDependencyBox:AddSlider("Movement_AntiAimYawAmount", {Text = "Yaw Amount", Default = Miscellaneous.Movement_AntiAimYawAmount, Min = 0, Max = 360, Rounding = 0, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimYawAmount", Value)
+end})
+YawDependencyBox:AddDropdown("Movement_AntiAimYawMode", {Text = "Yaw Mode", Default = Miscellaneous.Movement_AntiAimYawMode, Values = {"Relative", "Absolute"}, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimYawMode", Value)
+end})
+AntiAimDependencyBox:AddToggle("Movement_AntiAimPitch", {Text = "Pitch", Default = Miscellaneous.Movement_AntiAimPitch, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimPitch", Value)
+end})
+
+local PitchDependencyBox = AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimPitch, true}})
+PitchDependencyBox:AddSlider("Movement_AntiAimPitchAmount", {Text = "Pitch Amount", Default = Miscellaneous.Movement_AntiAimPitchAmount, Min = 0, Max = 180, Rounding = 0, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimPitchAmount", Value)
+end})
+PitchDependencyBox:AddDropdown("Movement_AntiAimPitchMode", {Text = "Pitch Mode", Default = Miscellaneous.Movement_AntiAimPitchMode, Values = {"Relative", "Absolute"}, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimPitchMode", Value)
+end})
+AntiAimDependencyBox:AddToggle("Movement_AntiAimJitter", {Text = "Jitter", Default = Miscellaneous.Movement_AntiAimJitter, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimJitter", Value)
+end})
+AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimJitter, true}}):AddSlider("Movement_AntiAimJitterSpeed", {
+	Text = "Jitter Speed", Default = Miscellaneous.Movement_AntiAimJitterSpeed, Min = 1, Max = 1000, Rounding = 0, Callback = function(Value)
+		UpdateTable(Miscellaneous, "Movement_AntiAimJitterSpeed", Value)
+	end
+})
+AntiAimDependencyBox:AddToggle("Movement_AntiAimSpinBot", {Text = "Spin Bot", Default = Miscellaneous.Movement_AntiAimSpinBot, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimSpinBot", Value)
+end})
+
+local SpinBotDependencyBox = AntiAimDependencyBox:AddDependencyBox():SetupDependencies({{Toggles.Movement_AntiAimSpinBot, true}})
+SpinBotDependencyBox:AddDropdown("Movement_AntiAimSpinDirection", {Text = "Spin Direction", Default = Miscellaneous.Movement_AntiAimSpinDirection, Values = {"Left", "Right"}, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimSpinDirection", Value)
+end})
+SpinBotDependencyBox:AddSlider("Movement_AntiAimSpinSpeed", {Text = "Spin Speed", Default = Miscellaneous.Movement_AntiAimSpinSpeed, Min = 1, Max = 1000, Rounding = 0, Callback = function(Value)
+	UpdateTable(Miscellaneous, "Movement_AntiAimSpinSpeed", Value)
 end})
 
 Visuals_CombatGroupbox:AddToggle("Combat_LightningKillEffectEnabled", {Text = "Lightning Kill Effect", Default = Visuals.Combat_LightningKillEffectEnabled, Callback = function(Value)
@@ -1956,20 +1987,48 @@ end}):AddColorPicker("Combat_BulletTracerColor", {Default = Visuals.Combat_Bulle
 	UpdateTable(Visuals, "Combat_BulletTracerColor", Value)
 end})
 
-local BulletTracersDependencyBox = Visuals_CombatGroupbox:AddDependencyBox():SetupDependencies({{Toggles.Combat_BulletTracers, true}})
+local Miscellaneous_ClientSessionUnlocks = Tabs.Miscellaneous:AddRightGroupbox("Client Session Unlocks")
+Miscellaneous_ClientSessionUnlocks:AddButton({Text = "Unlock Attachments", Func = function()
+	Miscellaneous.ClientSessionUnlocks_AttachmentsUnlocked = true
+end})
+Miscellaneous_ClientSessionUnlocks:AddButton({Text = "Unlock Knives", Func = function()
+	Miscellaneous.ClientSessionUnlocks_KnivesUnlocked = true
+end})
+Miscellaneous_ClientSessionUnlocks:AddButton({Text = "Unlock Camos", Func = function()
+    if Miscellaneous.ClientSessionUnlocks_CamosUnlocked then
+        return Library:Notify("All camos have already been unlocked.", 3)
+    end
 
+    for _,Table in next, getgc(true) do
+        if type(Table) ~= "table"  or not rawget(Table, "Mentha Spicata") or not rawget(Table, "Dove blue") then
+            continue
+        end
+
+        local GetCasePacketData = PlayerDataUtils.getCasePacketData
+        for Name, Data in next, Table do
+            local Case = Data.Case
+            if Case then
+                GetCasePacketData(PlayerDataClientInterface.getPlayerData(), Case, true).Skins[Name] = {ALL = true}
+            end
+        end
+
+        Miscellaneous.ClientSessionUnlocks_CamosUnlocked = true
+		Library:Notify("Successfully unlocked all camos.", 5)
+        break
+    end
+end})
+Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ]", false, "1. These Unlocks only last for the current session.\n2. Unlocks are not visible to others.\n3. Dropping Unlocked weapons lose any Unlocked Add-Ons.\n4. Dropping an Unlocked Knife will make it dissapear.")
+
+local BulletTracersDependencyBox = Visuals_CombatGroupbox:AddDependencyBox():SetupDependencies({{Toggles.Combat_BulletTracers, true}})
 BulletTracersDependencyBox:AddDropdown("Combat_BulletTracerType", {Text = "Tracer Type", Default = Visuals.Combat_BulletTracerType, Values = {"Beam", "Wavy"}, Callback = function(Value)
 	UpdateTable(Visuals, "Combat_BulletTracerType", Value)
 end})
-
 BulletTracersDependencyBox:AddDropdown("Combat_BulletTracerFadeMode", {Text = "Fade Mode", Default = Visuals.Combat_BulletTracerFadeMode, Values = {"Width", "Transparency"}, Callback = function(Value)
 	UpdateTable(Visuals, "Combat_BulletTracerFadeMode", Value)
 end})
-
 BulletTracersDependencyBox:AddSlider("Combat_BulletTracerThickness", {Text = "Thickness", Default = Visuals.Combat_BulletTracerThickness, Min = 1, Max = 5, Rounding = 1, Callback = function(Value)
 	UpdateTable(Visuals, "Combat_BulletTracerThickness", Value)
 end})
-
 BulletTracersDependencyBox:AddSlider("Combat_BulletTracerDuration", {Text = "Duration", Default = Visuals.Combat_BulletTracerDuration, Min = 0.1, Max = 10, Rounding = 1, Callback = function(Value)
 	UpdateTable(Visuals, "Combat_BulletTracerDuration", Value)
 end})
@@ -2155,8 +2214,8 @@ end})
 World_Camera:AddToggle("Camera_ThirdPersonView", {Text = "Third Person View", Default = Visuals.Camera_ThirdPersonView, Callback = function(Value)
 	UpdateTable(Visuals, "Camera_ThirdPersonView", Value)
 end}):AddKeyPicker("Camera_ThirdPersonView_Keybind", {
-	Default = Visuals.Camera_ThirdPersonView_Keybind, Mode = "Toggle", Text = "Third Person View Keybind", ChangedCallback = function(Key)
-		UpdateTable(Visuals, "Camera_ThirdPersonView_Keybind", Key)
+	Default = Visuals.Camera_ThirdPersonView_Keybind, Mode = "Toggle", Text = "Third Person View Keybind", ChangedCallback = function(Keybind)
+		UpdateTable(Visuals, "Camera_ThirdPersonView_Keybind", Keybind)
 	end, Callback = function(Value)
 		IsThirdPersonActive = Value
 	end
@@ -2319,7 +2378,7 @@ end})
 
 local Settings_UserInterface = Tabs.Settings:AddLeftGroupbox("User Interface")
 Settings_UserInterface:CreateConfigurationManager("NikoletoScripts/PhantomWare", ".ns", {Aiming, Visuals, Miscellaneous, Settings})
-Settings_UserInterface:AddLabel("Menu Toggle Keybind"):AddKeyPicker("MenuToggleKeybind", {Default = "RightShift", Mode = "Toggle", Text = "Menu Toggle Keybind", Callback = function(Value)
+Settings_UserInterface:AddLabel("Menu Toggle Keybind"):AddKeyPicker("Inactive4", {Default = "RightShift", Mode = "Toggle", Text = "Menu Toggle Keybind", Callback = function(Value)
 	Library:Toggle()
 end})
 
@@ -2470,7 +2529,6 @@ task.spawn(function()
 	}))
 end)
 
-local OperateOnAllEntries = ReplicationInterface.operateOnAllEntries
 local RaycastStep, GrenadeTrajectory2DLines, GrenadeTrajectory3DSegments = 1/60, {}, {}
 local GrenadeTrajectory2DMarker = CreateDrawing("Circle", {Filled = true, NumSides = 12})
 local GrenadeTrajectory3DMarker = Create("SphereHandleAdornment", Parent, {Radius = 0.25, ZIndex = 5, AlwaysOnTop = true, Adornee = Terrain})
@@ -2941,14 +2999,11 @@ RunService.Heartbeat:Connect(function(DeltaTime)
 					PlayGameSound("1PsniperEcho", 1)
 				end
 
-				local HitSound = CustomSounds[Miscellaneous.SoundOverride_HitSound]
+				local HitSound = Miscellaneous.SoundOverride_HitSound
 				if HitSound == "None" then
-					--[[local ShootSound = CustomSounds[Miscellaneous.SoundOverride_ShootSound]
-					if ShootSound ~= "None" then
-						PlaySoundId(ShootSound, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
-					end --AudioSystem.playSoundId(WeaponData.firesoundid, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)]]
+					PlaySoundId(WeaponData.firesoundid, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
 				else
-					PlaySoundId(HitSound, 2, WeaponData.firevolume, 1, Barrel, nil, 0, 0.05)
+					PlaySoundId(CustomSounds[HitSound], 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
 				end
 
 				if ShouldCreateBulletTracer then
