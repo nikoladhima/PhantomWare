@@ -1278,7 +1278,7 @@ do
         })
     end
 
-    function Funcs:AddLabel(Text, DoesWrap)
+    function Funcs:AddLabel(Text, DoesWrap, ToolTip)
         local Label = {}
 
         local Groupbox = self
@@ -1325,6 +1325,9 @@ do
 
         Groupbox:AddBlank(5)
         Groupbox:Resize()
+        if type(ToolTip) == "string" then
+            Library:AddToolTip(ToolTip, TextLabel)
+        end
         return Label
     end
 
@@ -2822,7 +2825,7 @@ do
             if Success then
                 for _,Configuration in ipairs(TablesToSave) do
                     for Setting in next, Configuration do
-                        if Setting == "MenuToggleKeybind" then
+                        if string.find(string.lower(Setting), "inactive") then
                             continue
                         end
 
