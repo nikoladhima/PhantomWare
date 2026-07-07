@@ -2017,7 +2017,7 @@ Miscellaneous_ClientSessionUnlocks:AddButton({Text = "Unlock Camos", Func = func
         break
     end
 end})
-Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ]", false, "1. These Unlocks only last for the current session.\n2. Unlocks are not visible to others.\n3. Dropping Unlocked weapons lose any Unlocked Add-Ons.\n4. Dropping an Unlocked Knife will make it dissapear.")
+Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "1. These Unlocks only last for the current session.\n2. Unlocks are only visible to you, not others.\n3. Dropping Unlocked weapons lose any Unlocked Add-Ons.\n4. Dropping an Unlocked Knife will make it dissapear.\n5. As of 7/7/2026, these Unlocks are undetected, use at your own risk.")
 
 local BulletTracersDependencyBox = Visuals_CombatGroupbox:AddDependencyBox():SetupDependencies({{Toggles.Combat_BulletTracers, true}})
 BulletTracersDependencyBox:AddDropdown("Combat_BulletTracerType", {Text = "Tracer Type", Default = Visuals.Combat_BulletTracerType, Values = {"Beam", "Wavy"}, Callback = function(Value)
