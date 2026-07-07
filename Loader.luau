@@ -32,7 +32,7 @@ end
 local Base = "NikoletoScripts/PhantomWare/"
 for _,Path in {"NikoletoScripts", "NikoletoScripts/PhantomWare", Base .. "Sounds", Base .. "Configs", Base .. "Cache", Base .. "Logs"} do
 	pcall(function()
-        if not isfile(Path) then
+        if not isfolder(Path) then
             makefolder(Path)
         end
     end)
