@@ -38,7 +38,7 @@ end
 if not ns__Modules then
 	getgenv().ns__PhantomWare__Executed = false
 	pcall(setfflag, "DebugRunParallelLuaOnMainThread", "True")
-	LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing Game Modules, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
+	LocalPlayer:Kick("Error while accessing Game Modules, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
     return pcall(setclipboard, "discord.gg/DwRT2nH93D")
 elseif not ns__Modules.ReplicationInterface then
 	writefile("NikoletoScripts/PhantomWare/Logs/Log_" .. os.date("%Y-%m-%d_%H-%M-%S") .. ".nslog", "[" .. (ExecutorName or "Unknown") .. " | " .. os.date(
@@ -60,7 +60,7 @@ elseif not ns__Modules.ReplicationInterface then
 	getgenv().ns__PhantomWare__Executed = false
 	pcall(setfflag, "DebugRunParallelLuaOnMainThread", "True")
 
-    LocalPlayer:Kick("Exploit not supported.\nReason: Error while accessing ReplicationInterface, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
+    LocalPlayer:Kick("Error while accessing ReplicationInterface, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
     return pcall(setclipboard, "discord.gg/DwRT2nH93D")
 end
 
@@ -382,7 +382,7 @@ local function ns__require(Module)
 		local StartTime = os.clock()
 		while true do
 			if os.clock() - StartTime < 5 then
-				LocalPlayer:Kick("Exploit not supported.\nReason: Module Access Timeout, please make a ticket in the discord server immediately. discord.gg/DwRT2nH93D")
+				LocalPlayer:Kick("Module Access Timeout, please make a ticket in the discord server immediately.\ndiscord.gg/DwRT2nH93D")
 				pcall(setclipboard, "discord.gg/DwRT2nH93D")
 				break
 			end
