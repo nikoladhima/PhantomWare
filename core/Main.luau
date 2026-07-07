@@ -1,6 +1,7 @@
 if getgenv().ns__PhantomWare__Executed then
 	return
 end
+
 getgenv().ns__PhantomWare__Executed = true
 pcall(clearteleportqueue or clear_teleport_queue)
 
@@ -67,8 +68,12 @@ elseif not ns__Modules.ReplicationInterface then
     return
 end
 
-local ns__cloneref = cloneref or clone_ref or clonereference or clone_reference or function(Function)
-    return Function
+local clonerefFunction = cloneref or clone_ref or clonereference or clone_reference
+local ns__cloneref = clonerefFunction and function(Object)
+	local Success, Result = pcall(clonerefFunction, Object)
+	return Success and Result or Object
+end or function(Object)
+    return Object
 end
 
 local VirtualInputManager = ns__cloneref(Instance.new("VirtualInputManager"))
@@ -2017,7 +2022,7 @@ Miscellaneous_ClientSessionUnlocks:AddButton({Text = "Unlock Camos", Func = func
         break
     end
 end})
-Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "1. These Unlocks only last for the current session.\n2. Unlocks are only visible to you, not others.\n3. Dropping Unlocked weapons lose any Unlocked Add-Ons.\n4. Dropping an Unlocked Knife will make it dissapear.\n5. As of 7/7/2026, these Unlocks are undetected, use at your own risk.")
+Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "1. These Unlocks only last for the current session.\n2. Unlocks are only visible to you, not others.\n3. Dropping Unlocked weapons makes it lose any Unlocked Add-Ons meaning you'd need to respawn to have the Add-Ons again.\n4. Dropping an Unlocked Knife in a match will make it dissapear.\n5. As of 7/7/2026, these Unlocks are undetected, use at your own risk.")
 
 local BulletTracersDependencyBox = Visuals_CombatGroupbox:AddDependencyBox():SetupDependencies({{Toggles.Combat_BulletTracers, true}})
 BulletTracersDependencyBox:AddDropdown("Combat_BulletTracerType", {Text = "Tracer Type", Default = Visuals.Combat_BulletTracerType, Values = {"Beam", "Wavy"}, Callback = function(Value)
