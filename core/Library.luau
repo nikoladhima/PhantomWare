@@ -1,5 +1,5 @@
 --[[
-    This is a modified version of Linoria Library, credits to them.
+    This is a modified version of Linoria Library, credits to Linoria.
 ]]
 
 local ns__cloneref = cloneref or clone_ref or clonereference or clone_reference or function(Object)
