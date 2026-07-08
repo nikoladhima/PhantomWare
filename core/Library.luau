@@ -1056,6 +1056,9 @@ do
                 end
 
                 KeyPicker.Mode = Mode
+                if Mode == "Hold" then
+                    KeyPicker.Toggled = false
+                end
 
                 Label.TextColor3 = Library.AccentColor
                 Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
@@ -1117,14 +1120,13 @@ do
             if KeyPicker.Mode == "Always" then
                 return true
             elseif KeyPicker.Mode == "Hold" then
-                if KeyPicker.Value == 'None' then
+                if KeyPicker.Value == "None" then
                     return false
                 end
 
                 local Key = KeyPicker.Value
-
-                if Key == 'MB1' or Key == 'MB2' then
-                    return Key == 'MB1' and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or Key == 'MB2' and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                if Key == "MB2" then
+                    return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
                 else
                     return UserInputService:IsKeyDown(Enum.KeyCode[KeyPicker.Value])
                 end
@@ -1238,6 +1240,10 @@ do
                 if KeyPicker.Mode == "Toggle" and Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value then
                     KeyPicker.Toggled = not KeyPicker.Toggled
                     KeyPicker:DoClick()
+                elseif KeyPicker.Mode == "Hold" then
+                    if (Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value) or (KeyPicker.Value == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2) then
+                        Library:SafeCallback(KeyPicker.Callback, true)
+                    end
                 end
                 KeyPicker:Update()
             end
@@ -1252,6 +1258,9 @@ do
 
         UserInputService.InputEnded:Connect(function(Input)
             if not Picking then
+                if KeyPicker.Mode == "Hold" and (Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value) or (KeyPicker.Value == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2) then
+                    Library:SafeCallback(KeyPicker.Callback, false)
+                end
                 KeyPicker:Update()
             end
         end)
