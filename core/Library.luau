@@ -2,18 +2,22 @@
     This is a modified version of Linoria Library, credits to Linoria.
 ]]
 
-local ns__cloneref = cloneref or clone_ref or clonereference or clone_reference or function(Object)
-	return Object
+local clonerefFunction = cloneref or clone_ref or clonereference or clone_reference
+local ns__cloneref = clonerefFunction and function(Object)
+	local Success, Result = pcall(clonerefFunction, Object)
+	return Success and Result or Object
+end or function(Object)
+    return Object
 end
 
-local UserInputService = game:GetService('UserInputService')
-local TweenService = game:GetService('TweenService')
-local TextService = game:GetService('TextService')
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
-local RunService = game:GetService('RunService')
-local CoreGui = ns__cloneref(game:GetService('CoreGui'))
-local Players = game:GetService('Players')
-local Teams = game:GetService('Teams')
+local RunService = game:GetService("RunService")
+local CoreGui = ns__cloneref(game:GetService("CoreGui"))
+local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
 
 local RenderStepped = RunService.RenderStepped
 local LocalPlayer = Players.LocalPlayer
@@ -1205,7 +1209,9 @@ do
 
                     if Input.UserInputType == Enum.UserInputType.Keyboard then
                         Key = Input.KeyCode.Name
-                    elseif Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                        Key = Input.UserInputType.Name
+                    elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
                         Key = "None"
                     end
 
@@ -1222,7 +1228,7 @@ do
                     Library:AttemptSave()
                     Event:Disconnect()
                 end)
-            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() and not Picking then
                 ModeSelectOuter.Visible = true
             end
         end)
