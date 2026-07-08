@@ -54,6 +54,8 @@ local Library = {
     OpenedFrames = {},
     DependencyBoxes = {},
 
+    ModeSelectOuters = {},
+
     ScreenGui = ScreenGui
 }
 
@@ -1005,6 +1007,8 @@ do
             Parent = ScreenGui
         })
 
+        Library.ModeSelectOuters[ModeSelectOuter] = true
+
         ToggleLabel:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
             ModeSelectOuter.Position = UDim2.fromOffset(ToggleLabel.AbsolutePosition.X + ToggleLabel.AbsoluteSize.X + 4, ToggleLabel.AbsolutePosition.Y + 1);
         end)
@@ -1051,13 +1055,29 @@ do
             })
 
             function ModeButton:Select()
+                local OldMode = KeyPicker.Mode
+
                 for _,Button in next, ModeButtons do
                     Button:Deselect()
                 end
 
                 KeyPicker.Mode = Mode
-                if Mode == "Hold" then
-                    KeyPicker.Toggled = false
+
+                if OldMode ~= Mode then
+                    if Mode == "Hold" and OldMode == "Toggle" and KeyPicker.Toggled then
+                        KeyPicker.Toggled = false
+                        Library:SafeCallback(KeyPicker.Callback, false)
+                        Library:SafeCallback(KeyPicker.Clicked, false)
+                    elseif Mode == "Toggle" and OldMode == "Hold" then
+                        if KeyPicker.Value ~= "None" then
+                            local Held = KeyPicker.Value == "MB2" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsKeyDown(Enum.KeyCode[KeyPicker.Value])
+                            if Held then
+                                KeyPicker.Toggled = true
+                                Library:SafeCallback(KeyPicker.Callback, true)
+                                Library:SafeCallback(KeyPicker.Clicked, true)
+                            end
+                        end
+                    end
                 end
 
                 Label.TextColor3 = Library.AccentColor
@@ -1120,7 +1140,7 @@ do
             if KeyPicker.Mode == "Always" then
                 return true
             elseif KeyPicker.Mode == "Hold" then
-                if KeyPicker.Value == "None" then
+                if KeyPicker.Value == 'None' then
                     return false
                 end
 
@@ -1235,7 +1255,11 @@ do
             end
         end)
 
-        UserInputService.InputBegan:Connect(function(Input)
+        local InputBeganConnection = UserInputService.InputBegan:Connect(function(Input, Processed)
+            if Processed then
+                return
+            end
+
             if not Picking then
                 if KeyPicker.Mode == "Toggle" and Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value then
                     KeyPicker.Toggled = not KeyPicker.Toggled
@@ -1256,13 +1280,28 @@ do
             end
         end)
 
-        UserInputService.InputEnded:Connect(function(Input)
+        local InputEndedConnection = UserInputService.InputEnded:Connect(function(Input, Processed)
+            if Processed then
+                return
+            end
+
             if not Picking then
-                if KeyPicker.Mode == "Hold" and (Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value) or (KeyPicker.Value == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2) then
+                if KeyPicker.Mode == "Hold" and ((Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value) or (KeyPicker.Value == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2)) then
                     Library:SafeCallback(KeyPicker.Callback, false)
                 end
                 KeyPicker:Update()
             end
+        end)
+
+        function KeyPicker:Destroy()
+            InputBeganConnection:Disconnect()
+            InputEndedConnection:Disconnect()
+            Library.ModeSelectOuters[ModeSelectOuter] = nil
+            ModeSelectOuter:Destroy()
+        end
+
+        PickOuter.Destroying:Connect(function()
+            KeyPicker:Destroy()
         end)
 
         KeyPicker:Update()
@@ -3752,6 +3791,10 @@ function Library:CreateWindow(Configuration, IsParallel)
     function Library:Toggle()
         if Fading then
             return
+        end
+
+        for ModeSelect in next, Library.ModeSelectOuters do
+            ModeSelect.Visible = false
         end
 
         local FadeTime = Configuration.MenuFadeTime;
