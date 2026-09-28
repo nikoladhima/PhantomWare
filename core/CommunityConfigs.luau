@@ -1,6 +1,6 @@
 return {
   {
-  	Name = "name testing",
+  	Name = "fake or real",
   	Author = "nikoleto scripts",
   	Description = "yo ts crazy frfr real test description",
   	Version = "1.0",
