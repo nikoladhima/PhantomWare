@@ -4,6 +4,6 @@ return {
   	Author = "nikoleto scripts",
   	Description = "yo ts crazy frfr real test description",
   	Version = "1.0",
-  	Configuration = [[im gay]],
+  	Configuration = [[update leak1!11!]],
   },
 }
