@@ -1,4 +1,3 @@
-Raw JSON as a string, baby — JSON isn't valid Luau, so it rides inside [[ ]] and the client parses it. File structure:
 return {
 	{
 		Name = "Legit Rifle",
