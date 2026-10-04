@@ -5,8 +5,8 @@
 
 ## ⚙️ Features:
 - RageBot & Aimbot 🎮
-- Visuals 👁️
-- Mods 🌐
+- ESP & Other Visuals 👁️
+- Weapon Mods 🌐
 - AND MANY MORE FEATURES.
 
 ## 🔌Shortened Script
