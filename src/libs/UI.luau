@@ -5962,15 +5962,15 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         end
 
         local SoundOverride_Groupbox = Tabs.Miscellaneous:AddLeftGroupbox("Sound Override")
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[10], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[9], Callback = function(Value)
             UIState[3].SoundOverride_ShootSound = Value
             PlaySound(Value)
         end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[10], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[9], Callback = function(Value)
             UIState[3].SoundOverride_HitSound = Value
             PlaySound(Value)
         end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[10], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[9], Callback = function(Value)
             UIState[3].SoundOverride_KillSound = Value
             PlaySound(Value)
         end})
