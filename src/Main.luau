@@ -136,15 +136,6 @@ GrenadeImpactParams.FilterType = Enum.RaycastFilterType.Include
 GrenadeImpactParams.IgnoreWater = true
 
 local BodyParts = {"Head", "Torso", "Arms", "Legs"}
-local BodyPartSizes = {
-    ["Head"] = Vector3.new(2, 1, 1),
-    ["Torso"] = Vector3.new(2, 2, 1),
-    ["Left Arm"] = Vector3.new(1, 2, 1),
-    ["Right Arm"] = Vector3.new(1, 2, 1),
-    ["Left Leg"] = Vector3.new(1, 2, 1),
-    ["Right Leg"] = Vector3.new(1, 2, 1)
-}
-
 local ColorCache = setmetatable({}, {__mode = "kv", __index = function(self, Color)
 	local DarkerColor = Color3.new(Color.R * 0.85, Color.G * 0.85, Color.B * 0.85)
 	rawset(self, Color, DarkerColor)
@@ -334,7 +325,6 @@ local Visuals = {
 	Camera_ThirdPerson = false,
 	Camera_ThirdPersonKeybind = "None",
 	Camera_ThirdPersonCameraCollision = true,
-	Camera_ThirdPersonHideViewModel = false,
 	Camera_ThirdPersonOffsetX = 0,
 	Camera_ThirdPersonOffsetY = 0,
 	Camera_ThirdPersonOffsetZ = 7,
@@ -506,7 +496,6 @@ end
 local RoundSystemClientInterface = Module.__get("RoundSystemClientInterface")
 local PlayerDataClientInterface = Module.__get("PlayerDataClientInterface")
 local HudCrosshairsInterface = Module.__get("HudCrosshairsInterface")
-local ReplicationInterface = Module.__get("ReplicationInterface")
 local CharacterInterface = Module.__get("CharacterInterface")
 local _,CameraInterface = coroutine.resume(coroutine.create(function(CameraInterface)
 	pcall(function()
@@ -534,15 +523,13 @@ local GetLocalCharacter = CharacterInterface.getCharacterObject
 local GetActiveCamera = CameraInterface.getActiveCamera
 local PlayGameSound = AudioSystem.play
 local GetPlayerStatusEntry = Module.__get("PlayerStatusInterface").getEntry
-local GetPlayerEntry = ReplicationInterface.getEntry
-local OperateOnAllEntries = ReplicationInterface.operateOnAllEntries
+local OperateOnAllEntries = Module.__get("ReplicationInterface").operateOnAllEntries
 local MuzzleFlash = Effects.muzzleflash
 
 local BulletLifetime = PublicSettings.bulletLifeTime
 local BulletAcceleration = PublicSettings.bulletAcceleration
 
 local CachedPlayers, MovementCache, MovementCached = table.create(Module.Players.MaxPlayers), table.create(Module.Players.MaxPlayers), {}
-
 local function RefreshCache()
 	local Players, Now = {}, os.clock()
 	local CacheMovement = Aiming.Aimbot_Enabled and Aiming.Aimbot_Type == "Silent" or (Aiming.RageBot_Enabled and (Aiming.RageBot_Collateral or Aiming.RageBot_Backtrack))
@@ -2110,7 +2097,7 @@ end
 function ViewModelModule:RefreshPart(Model, Part)
 	local NoSleeves = Visuals.ViewModel_NoSleeves
 	local IsSleeve = self.Sleeves[Part]
-	Part.LocalTransparencyModifier = ((Visuals.Camera_ThirdPerson and Visuals.Camera_ThirdPersonHideViewModel) or (NoSleeves and IsSleeve)) and 1 or 0
+	Part.LocalTransparencyModifier = (NoSleeves and IsSleeve) and 1 or 0
 	if IsSleeve then
 		for _,Child in ipairs(Part:GetChildren()) do
 			Child.Transparency = NoSleeves and 1 or 0
@@ -2777,7 +2764,7 @@ local function UpdateAimbot(LocalHeadPosition)
 				end
 			end
 
-			local AimbotTargetEntry = AimbotState.Target and GetPlayerEntry(AimbotState.Target)
+			local AimbotTargetEntry = AimbotState.Target and CachedPlayers[AimbotState.Target]
 			if AimbotTargetEntry and AimbotTargetEntry._alive and Aiming.Aimbot_Type ~= "Silent" then
 				Check(AimbotState.Target, AimbotTargetEntry._thirdPersonObject._characterModelHash)
 			end
@@ -3257,11 +3244,10 @@ function RageBotModule:Update()
 					for _Index = Index + 1, #SortedEntries do
 						local _Entry = SortedEntries[_Index]
 						local _Player = _Entry._player
-						if _Player ~= Player and MovementCache[_Player] then
-							local Position = _Entry._receivedPosition
-							if Position and (Position - Target).Magnitude <= 9.9 then
-								for PelletIndex = 1, PelletCount do
-									NetworkClientSend(NetworkClient, "bullethit", UniqueId, _Player, Target, HitPartName or "Head", Bullets[PelletIndex][2], NetworkTime)
+						if _Player ~= Player then
+							if (_Entry._receivedPosition - Target).Magnitude <= 9.9 then
+								for __Index = 1, PelletCount do
+									NetworkClientSend(NetworkClient, "bullethit", UniqueId, _Player, Target, HitPartName or "Head", Bullets[__Index][2], NetworkTime)
 								end
 							end
 						end
@@ -3828,7 +3814,7 @@ NetworkClient.send = function(self, Packet, ...)
 end
 
 Library:BuildUI({Aiming, Visuals, Miscellaneous, Settings}, {
-	ESPModule, LightingCache, OnDeadBody, RefreshLighting, UpdateBloom, ViewModelModule, CustomSounds, Effects.breakwindow, PlaySoundId, {
+	ESPModule, LightingCache, OnDeadBody, RefreshLighting, UpdateBloom, CustomSounds, Effects.breakwindow, PlaySoundId, {
 		"None", "Osu", "MLG", "Bonk", "Rust", "Metal", "Skeet", "Quack", "Katana", "Neverlose",
 		"Undertale", "Jet Set Radio", "TF2 Critical", "TF2 Frying Pan", "TF2 Alternative"
 	}
