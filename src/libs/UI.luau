@@ -6170,8 +6170,10 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         end})
 
         task.spawn(function()
-            while UIState[3].Extras_LoopBreakAllWindows do
-                BreakAllWindows()
+            while true do
+                if UIState[3].Extras_LoopBreakAllWindows then
+                    BreakAllWindows()
+                end
                 task.wait(5)
             end
         end)
