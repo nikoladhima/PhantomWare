@@ -3346,10 +3346,6 @@ ns__hookfunction(Module.__get("ThirdPersonObject"), "popCharacterModel", functio
 	return Character, Position
 end)
 
-ns__hookfunction(Module.__get("ThirdPersonObject"), "kickWeapon", function(Original, self, ...)
-	return
-end)
-
 for Index, Table in ipairs({FirearmObject, GrenadeObject, MeleeObject}) do
 	ns__hookfunction(Table, "step", function(Original, self, ...)
 		Original(self, ...)
