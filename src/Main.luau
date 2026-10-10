@@ -3501,6 +3501,7 @@ end
 
 RunService.PreRender:Connect(function(DeltaTime)
 	ImDrawing.NewFrame()
+	Library:UpdateWatermark()
 
 	local PreviousFrame = CanSeeFrameCounter
 	CanSeeFrameCounter += 1
@@ -3567,7 +3568,6 @@ RunService.PreRender:Connect(function(DeltaTime)
 		AutoFireModule:Update(Now)
 	end
 
-	Library:UpdateWatermark()
 	ImDrawing.EndFrame()
 end)
 
