@@ -10,7 +10,7 @@
 
     -- Made by Nikoleto Scripts, if you encounter issues, open a ticket in the Discord server.
     GitHub: https://github.com/nikoladhima
-    Discord: https://discord.gg/DwRT2nH93D / @nikoleto._
+    Discord: https://discord.gg/DsGCKtxxEN / @nikoleto._
 ]]
 
 repeat task.wait(0.25) until game:IsLoaded()
