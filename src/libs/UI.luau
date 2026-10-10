@@ -64,14 +64,14 @@ local Library = {
 }
 
 local UiTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local ToggleTweenInfo = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local UiPropertyTweens = setmetatable({}, {__mode = 'k'})
+local ToggleTweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local UIPropertyTweens = setmetatable({}, {__mode = 'k'})
 
 local function TweenGuiProperty(Instance, Property, Target, TweenInfoOverride)
-    local PropertyTweens = UiPropertyTweens[Instance]
+    local PropertyTweens = UIPropertyTweens[Instance]
     if not PropertyTweens then
         PropertyTweens = {}
-        UiPropertyTweens[Instance] = PropertyTweens
+        UIPropertyTweens[Instance] = PropertyTweens
     end
 
     local CurrentTween = PropertyTweens[Property]
@@ -104,7 +104,6 @@ local Hue = 0
 local Step, Step2 = 1/60, 1/400
 PreRender:Connect(function(Delta)
     RainbowStep = RainbowStep + Delta
-
     if RainbowStep >= Step then
         RainbowStep = 0
 
@@ -5085,12 +5084,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        SilentDependencyBox:AddToggle("Aimbot_BulletCache", {
-            Text = "Bullet Cache", Default = UIState[1].Aimbot_BulletCache, Callback = function(Value)
-                UIState[1].Aimbot_BulletCache = Value
-            end
-        })
-
         AimbotDependencyBox:AddDivider()
 
         AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
@@ -5792,32 +5785,41 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local WeaponChamsMenu = World_ViewModel:AddToggle("ViewModel_WeaponChams", {Text = "Weapon Chams", Default = UIState[2].ViewModel_WeaponChams, Callback = function(Value)
             UIState[2].ViewModel_WeaponChams = Value
+            UIFeatures[6]:Refresh()
         end}):AddSettingsMenu("Weapon Cham Settings")
         WeaponChamsMenu:AddColorPicker("ViewModel_WeaponChamColor", {Default = UIState[2].ViewModel_WeaponChamColor, Title = "Chams Color", Callback = function(Value)
             UIState[2].ViewModel_WeaponChamColor = Value
+            UIFeatures[6]:Refresh()
         end})
         WeaponChamsMenu:AddDropdown("ViewModel_WeaponChamType", {Text = "Type", Default = UIState[2].ViewModel_WeaponChamType, Values = {"ForceField", "Neon", "Glass", "SmoothPlastic"}, Callback = function(Value)
             UIState[2].ViewModel_WeaponChamType = Value
+            UIFeatures[6]:Refresh()
         end})
         WeaponChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_WeaponChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddToggle("ViewModel_WeaponChamTranslucent", {Text = "Translucent", Default = UIState[2].ViewModel_WeaponChamTranslucent, Callback = function(Value)
             UIState[2].ViewModel_WeaponChamTranslucent = Value
+            UIFeatures[6]:Refresh()
         end})
 
         local ArmChamsMenu = World_ViewModel:AddToggle("ViewModel_ArmChams", {Text = "Arm Chams", Default = UIState[2].ViewModel_ArmChams, Callback = function(Value)
             UIState[2].ViewModel_ArmChams = Value
+            UIFeatures[6]:Refresh()
         end}):AddSettingsMenu("Arm Cham Settings")
         ArmChamsMenu:AddColorPicker("ViewModel_ArmChamColor", {Default = UIState[2].ViewModel_ArmChamColor, Title = "Chams Color", Callback = function(Value)
             UIState[2].ViewModel_ArmChamColor = Value
+            UIFeatures[6]:Refresh()
         end})
         ArmChamsMenu:AddDropdown("ViewModel_ArmChamType", {Text = "Type", Default = UIState[2].ViewModel_ArmChamType, Values = {"ForceField", "Neon", "Glass", "SmoothPlastic"}, Callback = function(Value)
             UIState[2].ViewModel_ArmChamType = Value
+            UIFeatures[6]:Refresh()
         end})
         ArmChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_ArmChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddToggle("ViewModel_ArmChamTranslucent", {Text = "Translucent", Default = UIState[2].ViewModel_ArmChamTranslucent, Callback = function(Value)
             UIState[2].ViewModel_ArmChamTranslucent = Value
+            UIFeatures[6]:Refresh()
         end})
 
         World_ViewModel:AddToggle("ViewModel_NoSleeves", {Text = "No Sleeves", Default = UIState[2].ViewModel_NoSleeves, Callback = function(Value)
             UIState[2].ViewModel_NoSleeves = Value
+            UIFeatures[6]:Refresh()
         end})
 
         World_ViewModel:AddDivider()
@@ -5957,20 +5959,20 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local function PlaySound(Value)
             if Value ~= "None"  then
-                task.spawn(UIFeatures[8], UIFeatures[6][Value], 1, 1)
+                task.spawn(UIFeatures[9], UIFeatures[7][Value], 1, 1)
             end
         end
 
         local SoundOverride_Groupbox = Tabs.Miscellaneous:AddLeftGroupbox("Sound Override")
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[9], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[10], Callback = function(Value)
             UIState[3].SoundOverride_ShootSound = Value
             PlaySound(Value)
         end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[9], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[10], Callback = function(Value)
             UIState[3].SoundOverride_HitSound = Value
             PlaySound(Value)
         end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[9], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[10], Callback = function(Value)
             UIState[3].SoundOverride_KillSound = Value
             PlaySound(Value)
         end})
@@ -6155,7 +6157,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             local CameraPosition = GameData[1].CFrame.Position
             for _,Descendant in next, workspace:QueryDescendants("BasePart#Window") do
                 if Descendant.Position ~= CameraPosition then
-                    UIFeatures[7](Descendant, Descendant.Position, (Descendant.Position - CameraPosition).Unit)
+                    UIFeatures[8](Descendant, Descendant.Position, (Descendant.Position - CameraPosition).Unit)
                 end
             end
         end
@@ -6173,8 +6175,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             while true do
                 if UIState[3].Extras_LoopBreakAllWindows then
                     BreakAllWindows()
+                    task.wait(4.975)
                 end
-                task.wait(5)
+                task.wait()
             end
         end)
     end
@@ -6235,5 +6238,4 @@ end
 Players.PlayerAdded:Connect(OnPlayerChange)
 Players.PlayerRemoving:Connect(OnPlayerChange)
 
-getgenv().Library = Library
 return Library
