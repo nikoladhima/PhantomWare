@@ -2485,7 +2485,7 @@ function ESPModule:Update(LocalHeadPosition)
 
 							if Depth >= 0.5 then
 								CacheBounds(Position)
-				end
+							end
 						end
 					end
 				end
