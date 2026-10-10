@@ -153,7 +153,6 @@ local Aiming = {
 	Aimbot_AutoWall = false,
 	Aimbot_AutoDelay = 0,
 	Aimbot_HitChance = 100,
-	Aimbot_BulletCache = true,
 	Aimbot_WallCheck = false,
 	Aimbot_DeathNotification = true,
 	Aimbot_ShowFOVCircle = true,
@@ -469,48 +468,15 @@ local LightingCache = {
 	}, Connections = {}
 }
 
-local BloomEffect = Instance.new("BloomEffect")
-BloomEffect.Enabled = false
-BloomEffect.Parent = Lighting
-
-local function RefreshLighting(Revert)
-	if not Revert then
-		for _,Setting in {"Ambient", "OutdoorAmbient", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "ShadowSoftness"} do
-			Lighting[Setting] = Visuals["Lighting_" .. Setting]
-		end
-		return
-	end
-
-	for Property, OriginalValue in next, LightingCache.OriginalValues do
-		Lighting[Property] = OriginalValue
-	end
-end
-
-local function UpdateBloom()
-	BloomEffect.Intensity = Visuals.Lighting_BloomIntensity
-	BloomEffect.Size = Visuals.Lighting_BloomSize
-	BloomEffect.Threshold = Visuals.Lighting_BloomThreshold
-	BloomEffect.Enabled = Visuals.Lighting_Bloom
-end
-
 local RoundSystemClientInterface = Module.__get("RoundSystemClientInterface")
 local PlayerDataClientInterface = Module.__get("PlayerDataClientInterface")
 local HudCrosshairsInterface = Module.__get("HudCrosshairsInterface")
 local CharacterInterface = Module.__get("CharacterInterface")
-local _,CameraInterface = coroutine.resume(coroutine.create(function(CameraInterface)
-	pcall(function()
-		local FunctionEnvironment = getfenv(CameraInterface.setCameraType)
-		FunctionEnvironment.warn = function() end
-		FunctionEnvironment.print = function() end
-	end)
-	return CameraInterface
-end), Module.__get("CameraInterface"))
-
+local CameraInterface = Module.__get("CameraInterface")
 local PlayerDataUtils = Module.__get("PlayerDataUtils")
 local PublicSettings = Module.__get("PublicSettings")
 local FirearmObject = Module.__get("FirearmObject")
 local NetworkClient = Module.__get("NetworkClient")
-local CharacterObject = Module.__get("CharacterObject")
 local AudioSystem = Module.__get("AudioSystem")
 local BulletCheck = Module.__get("BulletCheck")
 local GrenadeObject = Module.__get("GrenadeObject")
@@ -572,6 +538,13 @@ local function RefreshCache()
 	end
 	table.clear(MovementCached)
 end
+RefreshCache()
+
+pcall(function()
+	local FunctionEnvironment = getfenv(CameraInterface.setCameraType)
+	FunctionEnvironment.warn = function() end
+	FunctionEnvironment.print = function() end
+end)
 
 local function GetActiveWeapon()
 	local Character = GetLocalCharacter()
@@ -586,134 +559,20 @@ end
 local LocalHead = nil
 local function GetLocalPosition()
 	if not LocalHead or not LocalHead.Parent then
-		for _,Child in next, IgnoreFolder:GetChildren() do
-			local Head = Child:IsA("Model") and Child:FindFirstChild("Head")
-			if Head then
-				LocalHead = Head
-				return Head.Position
+		local LocalCharacter = GetLocalCharacter()
+		if LocalCharacter then
+			LocalCharacter = LocalCharacter._characterModel
+			if LocalCharacter then
+				local Head = LocalCharacter:FindFirstChild("Head")
+				if Head then
+					LocalHead = Head
+					return Head.Position
+				end
 			end
 		end
 		return Camera.CFrame.Position
 	end
 	return LocalHead.Position
-end
-
-local function SolvePolynomial(Coeff1, Coeff2, Coeff3, Coeff4, Coeff5)
-	if not Coeff1 then
-		return
-	end
-
-	if Coeff1 > -1e-10 and Coeff1 < 1e-10 then
-		return SolvePolynomial(Coeff2, Coeff3, Coeff4, Coeff5)
-	end
-
-	if Coeff5 then
-		local QuarticShift = -Coeff2 / (4 * Coeff1)
-		local DepressedB = (Coeff3 + QuarticShift * (3 * Coeff2 + 6 * Coeff1 * QuarticShift)) / Coeff1
-		local DepressedC = (Coeff4 + QuarticShift * (2 * Coeff3 + QuarticShift * (3 * Coeff2 + 4 * Coeff1 * QuarticShift))) / Coeff1
-		local DepressedD = (Coeff5 + QuarticShift * (Coeff4 + QuarticShift * (Coeff3 + QuarticShift * (Coeff2 + Coeff1 * QuarticShift)))) / Coeff1
-		if DepressedC > -1e-10 and DepressedC < 1e-10 then
-			local BiquadRoot1, BiquadRoot2 = SolvePolynomial(1, DepressedB, DepressedD)
-			if BiquadRoot2 and not (BiquadRoot2 < 0) then
-				local RootSqrt1 = math.sqrt(BiquadRoot1)
-				local RootSqrt2 = math.sqrt(BiquadRoot2)
-				return QuarticShift - RootSqrt2, QuarticShift - RootSqrt1, QuarticShift + RootSqrt1, QuarticShift + RootSqrt2
-			end
-			return
-		end
-
-		local Resolvent,_,CubicRoot = SolvePolynomial(1, 2 * DepressedB, DepressedB * DepressedB - 4 * DepressedD, -DepressedC * DepressedC)
-		local Base = CubicRoot or Resolvent
-		local ResolventRoot = math.sqrt(Base)
-		local QuadraticA1, QuadraticA2 = SolvePolynomial(1, ResolventRoot, (Base + DepressedB - DepressedC / ResolventRoot) * 0.5)
-		local QuadraticB1, QuadraticB2 = SolvePolynomial(1, -ResolventRoot, (Base + DepressedB + DepressedC / ResolventRoot) * 0.5)
-		if QuadraticA1 and QuadraticB1 then
-			return QuarticShift + QuadraticA1, QuarticShift + QuadraticA2, QuarticShift + QuadraticB1, QuarticShift + QuadraticB2
-		end
-
-		if QuadraticA1 then
-			return QuarticShift + QuadraticA1, QuarticShift + QuadraticA2
-		end
-
-		if QuadraticB1 then
-			return QuarticShift + QuadraticB1, QuarticShift + QuadraticB2
-		end
-	elseif Coeff4 then
-		local CubicShift = -Coeff2 / (3 * Coeff1)
-		local CubicP = -(Coeff3 + CubicShift * (2 * Coeff2 + 3 * Coeff1 * CubicShift)) / (3 * Coeff1)
-		local CubicQ = -(Coeff4 + CubicShift * (Coeff3 + CubicShift * (Coeff2 + Coeff1 * CubicShift))) / (2 * Coeff1)
-		local Discriminant = CubicQ * CubicQ - CubicP * CubicP * CubicP
-		local AbsDisc = math.sqrt(math.abs(Discriminant))
-		if not (Discriminant > 0) then
-			local Angle = math.atan2(AbsDisc, CubicQ) / 3
-			local Spread = math.sqrt(CubicP) * 2
-			return CubicShift - Spread * math.sin(Angle + 0.5235987755982988), CubicShift + Spread * math.sin(Angle - 0.5235987755982988), CubicShift + Spread * math.cos(Angle)
-		end
-
-		local CubeTermA = CubicQ + AbsDisc
-		local CubeTermB = CubicQ - AbsDisc
-		local CubeRootA = CubeTermA < 0 and -(-CubeTermA) ^ 0.3333333333333333 or CubeTermA ^ 0.3333333333333333
-		local CubeRootB
-		if CubeTermB < 0 then
-			CubeRootB = -(-CubeTermB) ^ 0.3333333333333333
-			if CubeRootB then
-				return CubicShift + CubeRootA + CubeRootB
-			else
-				CubeRootB = CubeTermB ^ 0.3333333333333333
-				return CubicShift + CubeRootA + CubeRootB
-			end
-		else
-			CubeRootB = CubeTermB ^ 0.3333333333333333
-			return CubicShift + CubeRootA + CubeRootB
-		end
-	elseif Coeff3 then
-		local Vertex = -Coeff2 / (2 * Coeff1)
-		local Discriminant = Vertex * Vertex - Coeff3 / Coeff1
-		if Discriminant < 0 then
-			return
-		end
-
-		local Spread = math.sqrt(Discriminant)
-		return Vertex - Spread, Vertex + Spread
-	elseif Coeff2 then
-		return -Coeff2 / Coeff1
-	end
-end
-
-local function MinimumPositive(...)
-	local Best = nil
-	for Index = 1, select("#", ...) do
-		local Value = select(Index, ...)
-		if not (Value < 0 or Best and Best < Value) then
-			Best = Value
-		end
-	end
-	return Best
-end
-
-local BallisticsModule = {}
-
-function BallisticsModule:Solve(Origin, Target, Speed, TargetVelocity, Gravity, BulletAccel)
-	local Delta, RelativeVelocity, RelativeAcceleration = Target - Origin, TargetVelocity, Vector3.zero - Gravity
-	local Time = MinimumPositive(SolvePolynomial(
-		RelativeAcceleration:Dot(RelativeAcceleration) - BulletAccel * BulletAccel, 4 * (RelativeAcceleration:Dot(
-			RelativeVelocity
-		) - BulletAccel * Speed),4 * (RelativeAcceleration:Dot(Delta) + RelativeVelocity:Dot(
-			RelativeVelocity) - Speed * Speed
-		), 8 * Delta:Dot(RelativeVelocity), 4 * Delta:Dot(Delta)
-	))
-
-	if Time then
-		return (Delta + Time * RelativeVelocity + Time * Time / 2 * RelativeAcceleration) / (Time * Speed + Time * Time / 2 * BulletAccel), Time
-	end
-end
-
-local function GetTrajectory(Origin, Acceleration, Target, Speed, Velocity)
-	local Weapon = GetActiveWeapon()
-	local Direction = BallisticsModule:Solve(Origin, Target, Speed, Velocity or Vector3.zero, Acceleration, Weapon and Weapon:getWeaponStat("bulletaccel") or 0)
-	if Direction then
-		return Direction * Speed
-	end
 end
 
 local function GetBulletVelocity(Origin, Target, Speed)
@@ -1071,14 +930,14 @@ function RageBotModule:SolveShot(Targets, Count, LocalPosition, BulletSpeed, Pen
 							HitPoints = self:GetHitPoints(Origin, Part)
 							if Cache then
 								Cache[Part] = {Origin = Origin, Points = HitPoints}
-							end
+				end
 						end
 
 						for _Index = 2, #HitPoints do
 							local _Origin, _Target, Velocity, Name = Check(Origin, HitPoints[_Index], Target.Name, true, true)
 							if _Origin then
 								return _Origin, _Target, Velocity, Name
-							end
+				end
 						end
 					end
 				end
@@ -1124,7 +983,7 @@ function RageBotModule:SolveShot(Targets, Count, LocalPosition, BulletSpeed, Pen
 							local _Origin, _Target, Velocity, Name = Check(Origin, Position, Target.Name, true, true)
 							if _Origin then
 								return _Origin, _Target, Velocity, Name
-							end
+				end
 						end
 					end
 					_Scans += 1
@@ -1145,11 +1004,9 @@ function RageBotModule:SolveShot(Targets, Count, LocalPosition, BulletSpeed, Pen
 	return Solve({table.unpack(self:GetFireOrigins(LocalPosition), 2)})
 end
 
-local RageTargetSlots = {}
-for Index = 1, 6 do
-	RageTargetSlots[Index] = {Name = "", IsInstance = true}
-end
-local RageFallbackSlot = {Name = "Head", IsInstance = false}
+local RageSlots, RageFallback = {{Name = "", IsInstance = true}, {Name = "", IsInstance = true}, {Name = "", IsInstance = true}, {
+	Name = "", IsInstance = true
+}, {Name = "", IsInstance = true}, {Name = "", IsInstance = true}}, {Name = "Head", IsInstance = false}
 
 function RageBotModule:GetTargets(Entry, Targets)
 	local CharacterHash = Entry._thirdPersonObject._characterModelHash
@@ -1158,13 +1015,11 @@ function RageBotModule:GetTargets(Entry, Targets)
 
 	local Count = 0
 	local function Add(Part, Name)
-		if Part then
-			Count += 1
-			local Slot = RageTargetSlots[Count]
-			Slot.Part = Part
-			Slot.Name = Name
-			Targets[Count] = Slot
-		end
+		Count += 1
+		local Slot = RageSlots[Count]
+		Slot.Part = Part
+		Slot.Name = Name
+		Targets[Count] = Slot
 	end
 
 	if Target ~= "Best" then
@@ -1192,8 +1047,8 @@ function RageBotModule:GetTargets(Entry, Targets)
 
 	if Count == 0 then
 		Count = 1
-		RageFallbackSlot.Position = Entry._receivedPosition
-		Targets[1] = RageFallbackSlot
+		RageFallback.Position = Entry._receivedPosition
+		Targets[1] = RageFallback
 	end
 
 	return Count
@@ -1290,63 +1145,187 @@ local function GetLocalHumanoid()
 	return Character and Character._humanoid
 end
 
-ns__hookfunction(FirearmObject, "computeWalkSway", function(Original, self, ...)
-	return Miscellaneous.WeaponMods_NoWalkSway and Original(self, 0, 0) or Original(self, ...)
-end)
+for _,ObjectModule in ipairs({FirearmObject, GrenadeObject, MeleeObject}) do
+	ns__hookfunction(ObjectModule, "step", function(Original, self, ...)
+		Original(self, ...)
 
-ns__hookfunction(FirearmObject, "computeGunSway", function(Original, self, ...)
-	return Miscellaneous.WeaponMods_NoWeaponSway and CFrame.identity or Original(self, ...)
-end)
+		local CustomOffset = Visuals.ViewModel_CustomOffset
+		local CustomRotation = Visuals.ViewModel_CustomRotation
+		local CustomRoll = Visuals.ViewModel_CustomRoll
 
-ns__hookfunction(FirearmObject, "getFiremode", function(Original, self, ...)
-	return Miscellaneous.WeaponMods_AutomaticGun and true or Original(self, ...)
-end)
-
-ns__hookfunction(FirearmObject, "getWeaponStat", function(Original, self, Stat, ...)
-	if (Stat == "unequiptime" or Stat == "equiptime") and Miscellaneous.WeaponMods_InstantEquipUnequip then
-		return 0
-	elseif (Stat == "unaimspeed" or Stat == "unmagnifyspeed") and Miscellaneous.WeaponMods_InstantAim then
-		return 100
-	elseif Stat == "variablechoke" or Stat == "spread" or Stat == "choke" or Stat == "aimchoke" or Stat == "hipchoke" then
-		local Value = Miscellaneous.WeaponMods_SpreadAdjustment * 0.01
-		if Value == 0 then
-			return 0
-		elseif Value < 1 then
-			return (Original(self, Stat, ...) or 0) * Value
+		if not (CustomOffset or CustomRotation or CustomRoll) then
+			return
 		end
-	end
-	return Original(self, Stat, ...)
-end)
 
-ns__hookfunction(FirearmObject, "getActiveAimStat", function(Original, self, Stat, ...)
-	if (Stat == "aimspeed" or Stat == "unaimspeed" or Stat == "magnifyspeed") and Miscellaneous.WeaponMods_InstantAim then
-		return 100
-	elseif Stat == "swayamp" and Miscellaneous.WeaponMods_NoScopeSway then
-		return 0
-	end
-	return Original(self, Stat, ...)
-end)
+		local AimBlend = 1
+		local ActiveAimStats = self._activeAimStats
+		if ActiveAimStats then
+			local Amount = 0
+			for _,Sight in ActiveAimStats do
+				Amount += Sight.sightaimspring.p
+			end
+			AimBlend = math.clamp(1 - Amount, 0, 1)
+		end
 
-ns__hookfunction(Module.__get("RecoilSprings"), "applyImpulse", function(Original, self, Offset, Scale, ...)
+		if AimBlend <= 0 then
+			return
+		end
+
+		local Offset = CFrame.identity
+
+		if CustomOffset then
+			Offset *= CFrame.new(Visuals.ViewModel_OffsetX, Visuals.ViewModel_OffsetY, Visuals.ViewModel_OffsetZ)
+		end
+
+		if CustomRotation then
+			Offset *= CFrame.Angles(math.rad(Visuals.ViewModel_RotationX), math.rad(Visuals.ViewModel_RotationY), math.rad(Visuals.ViewModel_RotationZ))
+		end
+
+		Offset = CFrame.identity:Lerp(Offset, AimBlend)
+
+		local CharacterObject = self._characterObject
+		local MainWeld, LeftWeld, RightWeld = self._mainWeld, CharacterObject._leftWeld, CharacterObject._rightWeld
+		MainWeld.C0 *= Offset
+
+		if LeftWeld then
+			LeftWeld.C0 *= Offset
+		end
+
+		if RightWeld then
+			RightWeld.C0 *= Offset
+		end
+
+		if CustomRoll then
+			local CameraCFrame = Camera.CFrame
+			local RootPartCFrame = CharacterObject._rootPartClone.CFrame
+
+			local Roll = RootPartCFrame:ToObjectSpace(CameraCFrame) * CFrame.Angles(0, 0, math.rad(
+				Visuals.ViewModel_Roll
+			) * AimBlend) * CameraCFrame:ToObjectSpace(RootPartCFrame)
+
+			MainWeld.C0 *= Roll
+
+			if LeftWeld then
+				LeftWeld.C0 *= Roll
+			end
+
+			if RightWeld then
+				RightWeld.C0 *= Roll
+			end
+		end
+	end)
+
+	ns__hookfunction(ObjectModule, "getAnimLength", function(Original, self, Name, ...)
+		local Lower = string.lower(Name)
+		if (string.find(Lower, "unequip") or string.find(Lower, "equip")) and Miscellaneous.WeaponMods_InstantEquipUnequip then
+			return 0
+		end
+		return Original(self, Name, ...)
+	end)
+
+	local IsFirearmObject = ObjectModule == FirearmObject
+	local IsGrenadeObject = ObjectModule == GrenadeObject
+
+	ns__hookfunction(ObjectModule, "getWeaponStat", function(Original, self, Stat, ...)
+		if (Stat == "unequiptime" or Stat == "equiptime") and Miscellaneous.WeaponMods_InstantEquipUnequip then
+			return 0
+		elseif IsGrenadeObject and Stat == "uncookable" and Miscellaneous.WeaponMods_UncookableGrenade then
+			return true
+		elseif IsFirearmObject then
+			if (Stat == "unaimspeed" or Stat == "unmagnifyspeed") and Miscellaneous.WeaponMods_InstantAim then
+				return 100
+			elseif Stat == "variablechoke" or Stat == "spread" or Stat == "choke" or Stat == "aimchoke" or Stat == "hipchoke" then
+				local Value = Miscellaneous.WeaponMods_SpreadAdjustment * 0.01
+				if Value == 0 then
+					return 0
+				elseif Value < 1 then
+					return (Original(self, Stat, ...) or 0) * Value
+				end
+			end
+		end
+		return Original(self, Stat, ...)
+	end)
+
+	if IsFirearmObject then
+		ns__hookfunction(ObjectModule, "computeWalkSway", function(Original, self, ...)
+			return Miscellaneous.WeaponMods_NoWalkSway and Original(self, 0, 0) or Original(self, ...)
+		end)
+
+		ns__hookfunction(ObjectModule, "computeGunSway", function(Original, self, ...)
+			return Miscellaneous.WeaponMods_NoWeaponSway and CFrame.identity or Original(self, ...)
+		end)
+
+		ns__hookfunction(ObjectModule, "getFiremode", function(Original, self, ...)
+			return Miscellaneous.WeaponMods_AutomaticGun and true or Original(self, ...)
+		end)
+
+		ns__hookfunction(ObjectModule, "getActiveAimStat", function(Original, self, Stat, ...)
+			if (Stat == "aimspeed" or Stat == "unaimspeed" or Stat == "magnifyspeed") and Miscellaneous.WeaponMods_InstantAim then
+				return 100
+			elseif Stat == "swayamp" and Miscellaneous.WeaponMods_NoScopeSway then
+				return 0
+			end
+			return Original(self, Stat, ...)
+		end)
+
+		ns__hookfunction(ObjectModule, "reload", function(Original, self)
+			if self:isEquipping() or self:isUnequipping() or self:isChambering() then
+				return
+			end
+
+			if Miscellaneous.WeaponMods_InstantReload then
+				NetworkClientSend(NetworkClient, "reload")
+				self:applyReloadCount(self._weaponData.magsize)
+				return self:fireInput("reloadFinish", GetGameClockTime())
+			end
+
+			return Original(self)
+		end)
+	elseif IsGrenadeObject then
+		ns__hookfunction(ObjectModule, "modelSway", function(Original, self, ...)
+			if Miscellaneous.WeaponMods_NoWeaponSway then
+				return CFrame.identity
+			end
+			return Original(self, ...)
+		end)
+	else
+		ns__hookfunction(ObjectModule, "meleeSway", function(Original, self, ...)
+			if Miscellaneous.WeaponMods_NoWeaponSway then
+				return CFrame.identity
+			end
+			return Original(self, ...)
+		end)
+	end
+
+	if not IsFirearmObject then
+		ns__hookfunction(ObjectModule, "walkSway", function(Original, self, ...)
+			if Miscellaneous.WeaponMods_NoWalkSway then
+				return CFrame.identity
+			end
+			return Original(self, ...)
+		end)
+	end
+end
+
+ns__hookfunction(Module.__get("RecoilSprings"), "applyImpulse", function(Original, self, Offset, Scale)
 	local Value = Miscellaneous.WeaponMods_RecoilAdjustment * 0.01
 	if Value == 0 then
 		return
 	elseif Value < 1 then
-		return Original(self, Offset, (Scale or 1) * Value, ...)
+		return Original(self, Offset, (Scale or 1) * Value)
 	end
-
-	return Original(self, Offset, Scale, ...)
+	return Original(self, Offset, Scale)
 end)
 
-ns__hookfunction(CharacterObject, "preSimulationStep", function(Original, self, DeltaTime)
+ns__hookfunction(Module.__get("CharacterObject"), "preSimulationStep", function(Original, self, DeltaTime)
 	Original(self, DeltaTime)
 
 	if Miscellaneous.Movement_Speed then
-		local Root = self._rootPart
-		local Horizontal = Vector3.new(Root.Velocity.X, 0, Root.Velocity.Z)
+		local RootPart = self._rootPart
+		local Horizontal = Vector3.new(RootPart.Velocity.X, 0, RootPart.Velocity.Z)
 		local Speed = Horizontal.Magnitude
 		if Speed > 0.5 then
-			Root.CFrame += Horizontal.Unit * (Miscellaneous.Movement_SpeedAmount - Speed) * DeltaTime
+			RootPart.CFrame += Horizontal.Unit * (Miscellaneous.Movement_SpeedAmount - Speed) * DeltaTime
 		end
 	end
 
@@ -1366,47 +1345,117 @@ ns__hookfunction(CharacterObject, "preSimulationStep", function(Original, self, 
 			Direction += Vector3.new(0, Miscellaneous.Movement_FlySpeed, 0)
 		end
 
-		local Root = self._rootPart
-		Root.Velocity = Direction
-		Root.CFrame += Root.Velocity * DeltaTime
+		local RootPart = self._rootPart
+		RootPart.Velocity = Direction
+		RootPart.CFrame += RootPart.Velocity * DeltaTime
 	end
-end)
-
-ns__hookfunction(FirearmObject, "reload", function(Original, self)
-	if self:isEquipping() or self:isUnequipping() or self:isChambering() then
-		return
-	end
-
-	if Miscellaneous.WeaponMods_InstantReload then
-		NetworkClientSend(NetworkClient, "reload")
-		self:applyReloadCount(self._weaponData.magsize)
-		return self:fireInput("reloadFinish", GetGameClockTime())
-	end
-
-	return Original(self)
 end)
 
 local TicketCache = {}
 local TicketAddition = 0
 
-local SilentCache = {Frame = 0, Time = 0}
-local SilentAimbotModule = {}
+local function SolvePolynomial(Coeff1, Coeff2, Coeff3, Coeff4, Coeff5)
+	if not Coeff1 then
+		return
+	end
 
-function SilentAimbotModule:GetClosest()
+	if Coeff1 > -1e-10 and Coeff1 < 1e-10 then
+		return SolvePolynomial(Coeff2, Coeff3, Coeff4, Coeff5)
+	end
+
+	if Coeff5 then
+		local QuarticShift = -Coeff2 / (4 * Coeff1)
+		local DepressedB = (Coeff3 + QuarticShift * (3 * Coeff2 + 6 * Coeff1 * QuarticShift)) / Coeff1
+		local DepressedC = (Coeff4 + QuarticShift * (2 * Coeff3 + QuarticShift * (3 * Coeff2 + 4 * Coeff1 * QuarticShift))) / Coeff1
+		local DepressedD = (Coeff5 + QuarticShift * (Coeff4 + QuarticShift * (Coeff3 + QuarticShift * (Coeff2 + Coeff1 * QuarticShift)))) / Coeff1
+		if DepressedC > -1e-10 and DepressedC < 1e-10 then
+			local BiquadRoot1, BiquadRoot2 = SolvePolynomial(1, DepressedB, DepressedD)
+			if BiquadRoot2 and not (BiquadRoot2 < 0) then
+				local RootSqrt1 = math.sqrt(BiquadRoot1)
+				local RootSqrt2 = math.sqrt(BiquadRoot2)
+				return QuarticShift - RootSqrt2, QuarticShift - RootSqrt1, QuarticShift + RootSqrt1, QuarticShift + RootSqrt2
+			end
+			return
+		end
+
+		local Resolvent,_,CubicRoot = SolvePolynomial(1, 2 * DepressedB, DepressedB * DepressedB - 4 * DepressedD, -DepressedC * DepressedC)
+		local Base = CubicRoot or Resolvent
+		local ResolventRoot = math.sqrt(Base)
+		local QuadraticA1, QuadraticA2 = SolvePolynomial(1, ResolventRoot, (Base + DepressedB - DepressedC / ResolventRoot) * 0.5)
+		local QuadraticB1, QuadraticB2 = SolvePolynomial(1, -ResolventRoot, (Base + DepressedB + DepressedC / ResolventRoot) * 0.5)
+		if QuadraticA1 and QuadraticB1 then
+			return QuarticShift + QuadraticA1, QuarticShift + QuadraticA2, QuarticShift + QuadraticB1, QuarticShift + QuadraticB2
+		end
+
+		if QuadraticA1 then
+			return QuarticShift + QuadraticA1, QuarticShift + QuadraticA2
+		end
+
+		if QuadraticB1 then
+			return QuarticShift + QuadraticB1, QuarticShift + QuadraticB2
+		end
+	elseif Coeff4 then
+		local CubicShift = -Coeff2 / (3 * Coeff1)
+		local CubicP = -(Coeff3 + CubicShift * (2 * Coeff2 + 3 * Coeff1 * CubicShift)) / (3 * Coeff1)
+		local CubicQ = -(Coeff4 + CubicShift * (Coeff3 + CubicShift * (Coeff2 + Coeff1 * CubicShift))) / (2 * Coeff1)
+		local Discriminant = CubicQ * CubicQ - CubicP * CubicP * CubicP
+		local AbsDisc = math.sqrt(math.abs(Discriminant))
+		if not (Discriminant > 0) then
+			local Angle = math.atan2(AbsDisc, CubicQ) / 3
+			local Spread = math.sqrt(CubicP) * 2
+			return CubicShift - Spread * math.sin(Angle + 0.5235987755982988), CubicShift + Spread * math.sin(Angle - 0.5235987755982988), CubicShift + Spread * math.cos(Angle)
+		end
+
+		local CubeTermA = CubicQ + AbsDisc
+		local CubeTermB = CubicQ - AbsDisc
+		local CubeRootA = CubeTermA < 0 and -(-CubeTermA) ^ 0.3333333333333333 or CubeTermA ^ 0.3333333333333333
+		local CubeRootB
+		if CubeTermB < 0 then
+			CubeRootB = -(-CubeTermB) ^ 0.3333333333333333
+			if CubeRootB then
+				return CubicShift + CubeRootA + CubeRootB
+			else
+				CubeRootB = CubeTermB ^ 0.3333333333333333
+				return CubicShift + CubeRootA + CubeRootB
+			end
+		else
+			CubeRootB = CubeTermB ^ 0.3333333333333333
+			return CubicShift + CubeRootA + CubeRootB
+		end
+	elseif Coeff3 then
+		local Vertex = -Coeff2 / (2 * Coeff1)
+		local Discriminant = Vertex * Vertex - Coeff3 / Coeff1
+		if Discriminant < 0 then
+			return
+		end
+
+		local Spread = math.sqrt(Discriminant)
+		return Vertex - Spread, Vertex + Spread
+	elseif Coeff2 then
+		return -Coeff2 / Coeff1
+	end
+end
+
+local SilentAimbotCache
+local function SilentAimbot_GetTarget(Origin, Acceleration, Speed)
+	if Aiming.Aimbot_HitChance < math.random(1, 100) then
+		return
+	end
+
 	local IsWallCheckOff = not Aiming.Aimbot_WallCheck
 	local FOVRadius = Aiming.Aimbot_ShowFOVCircle and Aiming.Aimbot_FOVCircleRadius or math.huge
 	local MaxScore, AimbotPart = math.huge, Aiming.Aimbot_Part
 	local FOVOrigin = Aiming.Aimbot_ShowFOVCircle and GetFOVOrigin() or ScreenCenter
 	local CenterX, CenterY, LocalHeadPosition = FOVOrigin.X, FOVOrigin.Y, GetLocalPosition()
-	local BestPosition, BestEntry, BestPart
+	local Target, Entry
 
-	for _,Entry in next, CachedPlayers do
-		local CharacterModelHash = Entry._isEnemy and Entry._thirdPersonObject._characterModelHash
-		if not CharacterModelHash then
+	for _,_Entry in next, CachedPlayers do
+		local ThirdPersonObject = _Entry._isEnemy and _Entry._thirdPersonObject
+		if not ThirdPersonObject then
 			continue
 		end
 
-		local Part, Screen = GetTargetPart(CharacterModelHash, AimbotPart, IsWallCheckOff)
+		local Part, Screen = GetTargetPart(ThirdPersonObject._characterModelHash, AimbotPart, IsWallCheckOff)
 		if not Part or not Screen then
 			continue
 		end
@@ -1423,23 +1472,10 @@ function SilentAimbotModule:GetClosest()
 		local Score = Distance + math.sqrt(DeltaX * DeltaX + DeltaY * DeltaY + DeltaZ * DeltaZ) * 0.15
 
 		if Score < MaxScore then
-			MaxScore = Score
-			BestPosition = Position
-			BestEntry = Entry
-			BestPart = Part
+			MaxScore, Target, Entry = Score, Position, _Entry
 		end
 	end
 
-	return BestPosition, BestEntry, BestPart
-end
-
-function SilentAimbotModule:Solve(Origin, Acceleration, Speed)
-	if Aiming.Aimbot_HitChance < math.random(1, 100) then
-		return
-	end
-
-	local Now = os.clock()
-	local Target, Entry = self:GetClosest()
 	if not Target or not Entry then
 		return
 	end
@@ -1454,17 +1490,36 @@ function SilentAimbotModule:Solve(Origin, Acceleration, Speed)
 		Velocity = (Current.Head - Old.Head) / (Current.Time - Old.Time)
 	end
 
-	local Trajectory = GetTrajectory(Origin, Acceleration, Target, Speed, Velocity or Vector3.zero)
-	if Trajectory then
-		return Trajectory.Unit, Target, Entry, Now
+	local Delta, _Velocity = Target - Origin, Velocity or Vector3.zero
+	local BulletAccel = GetActiveWeapon()._weaponData.bulletaccel or 0
+	local Roots = table.pack(SolvePolynomial(
+		Acceleration:Dot(Acceleration) - BulletAccel * BulletAccel, 4 * (Acceleration:Dot(
+			_Velocity
+		) - BulletAccel * Speed), 4 * (Acceleration:Dot(Delta) + _Velocity:Dot(
+			_Velocity
+		) - Speed * Speed), 8 * Delta:Dot(_Velocity), 4 * Delta:Dot(Delta)
+	))
+
+	local Time
+	for Index = 1, Roots.n do
+		local Root = Roots[Index]
+		if not (Root < 0 or Time and Time < Root) then
+			Time = Root
+		end
+	end
+
+	if Time then
+		local Direction = (Delta + Time * _Velocity + Time * Time / 2 * Acceleration) / (
+			Time * Speed + Time * Time / 2 * BulletAccel
+		)
+		return Direction.Unit, Target, Entry
 	end
 end
 
 local AntiAimCycleFrames = 0
-local SpinTime = os.clock()
-local SpinWasOn = false
+local SpinTime = 0
 local function GetAntiAimAngles(Angles)
-	local Pitch, Yaw, Roll = Angles.X, Angles.Y, Angles.Z
+	local Pitch, Yaw = Angles.X, Angles.Y
 	local ClockTime = os.clock()
 	AntiAimCycleFrames += 1
 
@@ -1502,16 +1557,15 @@ local function GetAntiAimAngles(Angles)
 	end
 
 	if Miscellaneous.AntiAim_Spin then
-		if not SpinWasOn then
-			SpinWasOn = true
-			SpinTime = os.clock()
+		if SpinTime == 0 then
+			SpinTime = ClockTime
 		end
-		Yaw += (os.clock() - SpinTime) * math.rad(Miscellaneous.AntiAim_SpinSpeed) * (Miscellaneous.AntiAim_SpinDirection == "Left" and 1 or -1)
+		Yaw += (ClockTime - SpinTime) * math.rad(Miscellaneous.AntiAim_SpinSpeed) * (Miscellaneous.AntiAim_SpinDirection == "Left" and 1 or -1)
 	else
-		SpinWasOn = false
+		SpinTime = 0
 	end
 
-	return Vector3.new(Pitch, Yaw, Roll) * 0.99
+	return Vector3.new(Pitch, Yaw, Angles.Z) * 0.99
 end
 
 local SphereHandleAdornment = ns__cloneref(Instance.new("SphereHandleAdornment"))
@@ -1746,7 +1800,8 @@ ns__hookfunction(AudioSystem, "playSound", function(Original, Name, ...)
 	end
 
 	for Player, Entry in next, CachedPlayers do
-		if Entry._isEnemy and Entry._thirdPersonObject._rootPart == RootPart then
+		local ThirdPersonObject = Entry._isEnemy and Entry._thirdPersonObject
+		if ThirdPersonObject and ThirdPersonObject._rootPart == RootPart then
 			local SoundRings = ESPModule.SoundRings[Player]
 			if not SoundRings then
 				SoundRings = {}
@@ -1786,50 +1841,30 @@ ns__hookfunction(AudioSystem, "playSound", function(Original, Name, ...)
 	end
 end)
 
-ns__hookfunction(Module.__get("BulletObject"), "new", function(Original, BulletData, ...)
+ns__hookfunction(Module.__get("BulletObject"), "new", function(Original, BulletData)
 	if not BulletData.onplayerhit then
 		return Original(BulletData)
 	end
 
 	if Aiming.Aimbot_Enabled and Aiming.Aimbot_Type == "Silent" then
 		local Speed = BulletData.velocity.Magnitude
-		local Direction, Target, Entry, Time = SilentAimbotModule:Solve(BulletData.position, BulletData.acceleration, Speed)
+		local Direction, Target, Entry = SilentAimbot_GetTarget(BulletData.position, -BulletData.acceleration, Speed)
 		if Direction and Target and Entry then
-			local Velocity = Direction * Speed
-			BulletData.velocity = Velocity
-			SilentCache.Target = Target
-			SilentCache.Velocity = Velocity
-			SilentCache.Frame = Time
-			SilentCache.Player = Entry._player
-			SilentCache.Entry = Entry
-			SilentCache.Time = Time
+			BulletData.velocity = Direction * Speed
 		end
+
+		SilentAimbotCache = SilentAimbotCache or {}
+		SilentAimbotCache[#SilentAimbotCache + 1] = Direction and Target and Entry and Direction or false
 	end
 
 	local Bullet = Original(BulletData)
-	if BulletData.extra and Visuals.Combat_LocalBulletTracers then
+	if Visuals.Combat_LocalBulletTracers then
 		BulletTracerModule:Render(BulletData.position, BulletData.velocity.Unit * 1000, "Combat_LocalBulletTracer")
 		for _,Object in next, Bullet._beamObject.beams do
 			Object.Enabled = false
 		end
 	end
 	return Bullet
-end)
-
-ns__hookfunction(GrenadeObject, "getWeaponStat", function(Original, self, Stat, ...)
-	if (Stat == "unequiptime" or Stat == "equiptime") and Miscellaneous.WeaponMods_InstantEquipUnequip then
-		return 0
-	elseif Stat == "uncookable" and Miscellaneous.WeaponMods_UncookableGrenade then
-		return true
-	end
-	return Original(self, Stat, ...)
-end)
-
-ns__hookfunction(MeleeObject, "getWeaponStat", function(Original, self, Stat, ...)
-	if (Stat == "unequiptime" or Stat == "equiptime") and Miscellaneous.WeaponMods_InstantEquipUnequip then
-		return 0
-	end
-	return Original(self, Stat, ...)
 end)
 
 ns__hookfunction(Module.__get("MainCameraObject"), "step", function(Original, self, DeltaTime, ...)
@@ -1851,20 +1886,6 @@ ns__hookfunction(Module.__get("MainCameraObject"), "step", function(Original, se
 	if Visuals.Camera_NoSuppression then
 		self._suppressionSpring.p = Vector3.zero
 	end
-end)
-
-ns__hookfunction(MeleeObject, "meleeSway", function(Original, self, ...)
-	if Miscellaneous.WeaponMods_NoWeaponSway then
-		return CFrame.identity
-	end
-	return Original(self, ...)
-end)
-
-ns__hookfunction(GrenadeObject, "modelSway", function(Original, self, ...)
-	if Miscellaneous.WeaponMods_NoWeaponSway then
-		return CFrame.identity
-	end
-	return Original(self, ...)
 end)
 
 local FlashlightPart = ns__cloneref(Instance.new("Part"))
@@ -1960,8 +1981,8 @@ local function OnDeadBody(Child)
 
 	if Visuals.Combat_RagdollGhost then
 		local Color = Visuals.Combat_RagdollGhostColor
-		local HiddenParts = {}
-		for _,Object in ipairs(Child:GetDescendants()) do
+		local VertexColor = Vector3.new(Color.R, Color.G, Color.B)
+		for _,Object in ipairs(Child:QueryDescendants("BasePart, SpecialMesh, Texture, Decal")) do
 			if Object:IsA("BasePart") then
 				Object.Color = Color
 				Object.Material = Enum.Material.ForceField
@@ -1970,21 +1991,17 @@ local function OnDeadBody(Child)
 					Object.TextureID = ""
 				end
 			elseif Object:IsA("SpecialMesh") then
-				if Object.MeshId == "rbxassetid://4049240078" then
-					HiddenParts[Object.Parent] = true
+				local MeshId = Object.MeshId
+				if MeshId == "rbxassetid://4049240078" then
+					Object.Parent.Transparency = 1
 				else
-					if Object.MeshId == "rbxassetid://6179256256" then
+					if MeshId == "rbxassetid://6179256256" then
 						Object.TextureId = "rbxassetid://12325350352"
 					end
-					Object.VertexColor = Vector3.new(Color.R, Color.G, Color.B)
+					Object.VertexColor = VertexColor
 				end
-			elseif Object:IsA("Texture") or Object:IsA("Decal") then
+			else
 				Object.Transparency = 1
-			end
-		end
-		for Part in next, HiddenParts do
-			if Part and Part.Parent then
-				Part.Transparency = 1
 			end
 		end
 	end
@@ -2058,8 +2075,8 @@ local function UpdateCrosshair(DeltaTime)
 	for Index = 1, 4 do
 		local Direction, Offset = CrosshairDirections[Index], Gap + Size
 		local Direction1, Direction2 = Direction[1], Direction[2]
-		local AimDirection = Vector2.new(Direction1 * Cosine - Direction2 * Sine, Direction1 * Sine + Direction2 * Cosine)
-		ImDrawing.Line(Center + AimDirection * Gap, Center + AimDirection * Offset, Color, Thickness, 1)
+		local Direction3 = Vector2.new(Direction1 * Cosine - Direction2 * Sine, Direction1 * Sine + Direction2 * Cosine)
+		ImDrawing.Line(Center + Direction3 * Gap, Center + Direction3 * Offset, Color, Thickness, 1)
 	end
 end
 
@@ -2070,8 +2087,9 @@ function ESPModule:Clear(Player)
 		self.Highlights[Player] = nil
 	end
 
-	if self.SoundRings[Player] then
-		self.SoundRings[Player] = nil
+	local SoundRings = self.SoundRings
+	if SoundRings[Player] then
+		SoundRings[Player] = nil
 	end
 end
 
@@ -2150,6 +2168,16 @@ function ViewModelModule:RefreshPart(Model, Part)
 	end
 end
 
+function ViewModelModule:Refresh()
+	for Model, ModelParts in next, self.Parts do
+		if Model.Parent then
+			for _,Part in next, ModelParts do
+				self:RefreshPart(Model, Part)
+			end
+		end
+	end
+end
+
 function ViewModelModule:OnCameraChildAdded(Model)
 	if not Model:IsA("Model") then
 		return
@@ -2194,8 +2222,7 @@ function KnifeAuraModule:Update()
 		return
 	end
 
-	local Now = os.clock()
-	if Now >= self.NextHit then
+		if Now >= self.NextHit then
 		local Origin, SelectedPart = GetLocalPosition(), Miscellaneous.KnifeAura_Part
 		local Name = SelectedPart == "Random" and (math.random(2) == 1 and "Head" or "Torso") or SelectedPart
 		local Range = Miscellaneous.KnifeAura_Range
@@ -2458,7 +2485,7 @@ function ESPModule:Update(LocalHeadPosition)
 
 							if Depth >= 0.5 then
 								CacheBounds(Position)
-							end
+				end
 						end
 					end
 				end
@@ -2631,7 +2658,7 @@ local ParticleEffects = {
 local HitGhosts = {}
 local function RenderHitCham(Model)
 	local Color, Parts = Visuals.Combat_HitGhostsColor, {}
-	for _,Descendant in Model:GetDescendants() do
+	for _,Descendant in Model:QueryDescendants("BasePart, SpecialMesh, Weld, BillboardGui, Texture, Decal") do
 		if Descendant:IsA("BasePart") then
 			Descendant.Anchored = true
 			Descendant.CanCollide = false
@@ -2657,7 +2684,6 @@ local function RenderHitCham(Model)
 			Descendant:Destroy()
 		end
 	end
-
 	Model.Parent = workspace
 	table.insert(HitGhosts, {Model = Model, Parts = Parts, Time = os.clock() + Visuals.Combat_HitGhostsLifetime})
 end
@@ -2883,23 +2909,40 @@ function GrenadeModule:UpdateTrajectory()
 		return
 	end
 
-	local CameraPosition = Camera.CFrame.Position
+	local CameraPosition = GetActiveCamera()._baseCFrame.Position
 	local StartPosition = ActiveWeapon._mainPart.Position
 	local StartHit = workspace:Raycast(CameraPosition, StartPosition - CameraPosition, GrenadeRaycastParams)
 	local Position = StartHit and (StartHit.Position + StartHit.Normal * 0.01) or StartPosition
 
-	local WeaponData = ActiveWeapon._weaponData
-	local Points, Bounces, Impact, Gravity = {Position}, 0, nil, Vector3.new(0, -80, 0)
+	local Gravity = ActiveWeapon._acceleration
+	local Points, Bounces, Impact = {Position}, 0, nil
 	local TargetPart = (not Visuals.Combat_GrenadeTrajectoryIgnoreAimbot) and AimbotState.TargetPart
-	local SegmentStart, SegmentVelocity, SegmentTime, LastPosition, RaycastOffset, SegmentAcceleration, LastBounce = Position, (
-		TargetPart and GrenadeModule:GetVelocity(TargetPart.Position, GetLocalPosition())
-	) or (Camera.CFrame * CFrame.Angles(math.rad(WeaponData.throwangle or 0), 0, 0)).LookVector * (
-		WeaponData.throwspeed or 100
-	) + (GetLocalCharacter()._rootPart.AssemblyLinearVelocity or Vector3.zero), 0, Position, Vector3.zero, Gravity, false
-	local MaxBounces, Elasticity, Friction = Visuals.Combat_GrenadeTrajectoryBounces, ActiveWeapon._bounceElasticity or 0.2, ActiveWeapon._frictionConstant or 0.08
-	for _ = 1, 240 do
-		SegmentTime += RaycastStep
-		local NextPosition = SegmentStart + SegmentVelocity * SegmentTime + 0.5 * SegmentAcceleration * SegmentTime * SegmentTime
+	local SegmentStart = Position
+	local WeaponData = ActiveWeapon._weaponData
+	local SegmentVelocity = (TargetPart and GrenadeModule:GetVelocity(TargetPart.Position, Position)) or ((Camera.CFrame * CFrame.Angles(math.rad(
+		WeaponData.throwangle or 0
+	), 0, 0)).LookVector * WeaponData.throwspeed + GetLocalCharacter()._rootPart.AssemblyLinearVelocity)
+	local SegmentTime, Elapsed, LastPosition, RaycastOffset = 0, 0, Position, Vector3.zero
+	local FuseTime = ActiveWeapon._fuseTime
+	local FuseRemaining = FuseTime > 0 and math.max(0, FuseTime - GetGameClockTime()) or WeaponData.fusetime
+	if FuseRemaining <= 0 then
+		for _,Segment in ipairs(GrenadeModule.Segments) do
+			Segment.Beam.Transparency = NumberSequence.new(1)
+		end
+		GrenadeModule.Marker.Visible = false
+		return
+	end
+
+	local MaxBounces = Visuals.Combat_GrenadeTrajectoryBounces
+	for _ = 1, math.clamp(math.ceil(FuseRemaining / RaycastStep), 1, 600) do
+		local StepTime = math.min(RaycastStep, FuseRemaining - Elapsed)
+		if StepTime <= 0 then
+			break
+		end
+
+		Elapsed += StepTime
+		SegmentTime += StepTime
+		local NextPosition = SegmentStart + SegmentVelocity * SegmentTime + 0.5 * Gravity * SegmentTime * SegmentTime
 		local Hit = workspace:Raycast(LastPosition, NextPosition - LastPosition - 0.05 * RaycastOffset, GrenadeRaycastParams)
 		if Hit and Hit.Instance.Name ~= "Window" and Hit.Instance.Name ~= "Col" then
 			local HitPosition = Hit.Position
@@ -2910,25 +2953,28 @@ function GrenadeModule:UpdateTrajectory()
 			end
 
 			local Normal, Delta = Hit.Normal, HitPosition - LastPosition
-			local Contact = LastPosition + math.max(0, 1 - 0.001 / Delta.Magnitude) * Delta + 0.05 * Normal
+			local DeltaMagnitude = Delta.Magnitude
+			local Contact = LastPosition + (DeltaMagnitude > 0 and math.max(0, 1 - 0.001 / DeltaMagnitude) or 0) * Delta + 0.05 * Normal
 			table.insert(Points, Contact)
 			local ImpactVelocity = SegmentVelocity + Gravity * SegmentTime
 			local NormalVelocity = Normal * ImpactVelocity:Dot(Normal)
 			local TangentialVelocity = ImpactVelocity - NormalVelocity
-			SegmentVelocity = math.max(0, 1 - Friction * (10 * math.max(0, -Normal:Dot(SegmentAcceleration)) * RaycastStep + math.max(
-				0, -(1 + Elasticity) * Normal:Dot(ImpactVelocity)
-			)) / TangentialVelocity.Magnitude) * TangentialVelocity - Elasticity * NormalVelocity
+			local TangentialSpeed = TangentialVelocity.Magnitude
+			local FrictionLoss = 0.08 * (10 * math.max(0, -Normal:Dot(Gravity)) * StepTime + math.max(
+				0, -(1 + 0.2) * Normal:Dot(ImpactVelocity)
+			)) / math.max(TangentialSpeed, 1e-6)
+			SegmentVelocity = math.max(0, 1 - FrictionLoss) * TangentialVelocity - 0.2 * NormalVelocity
 			if SegmentVelocity.Magnitude < 1 then
 				Impact = Contact
 				break
 			end
 
-			SegmentStart, SegmentTime, LastPosition, SegmentAcceleration = Contact, 0, Contact, LastBounce and Vector3.zero or Gravity
-			LastBounce, RaycastOffset = true, 0.2 * Normal
+			SegmentStart, SegmentTime, LastPosition = Contact, 0, Contact
+			RaycastOffset = 0.2 * Normal
 			Bounces += 1
 		else
 			table.insert(Points, NextPosition)
-			LastPosition, LastBounce = NextPosition, false
+			LastPosition = NextPosition
 		end
 	end
 
@@ -3249,7 +3295,7 @@ function RageBotModule:Update()
 								for __Index = 1, PelletCount do
 									NetworkClientSend(NetworkClient, "bullethit", UniqueId, _Player, Target, HitPartName or "Head", Bullets[__Index][2], NetworkTime)
 								end
-							end
+				end
 						end
 					end
 				end
@@ -3319,7 +3365,7 @@ Effects.muzzleflash = function(Barrel, Hide, Scale)
 			local Material = Enum.Material[Miscellaneous.WeaponMods_MuzzleFlashMaterial] or Enum.Material.Neon
 			for _,Child in MiscFolder:GetChildren() do
 				if Child:IsA("Model") and (Child:GetPivot().Position - Origin).Magnitude < 1.5 then
-					for _,Item in Child:QueryDescendants("ParticleEmitter, BasePart, ParticleEmitter, Light") do
+					for _,Item in Child:QueryDescendants("BasePart, ParticleEmitter, Light") do
 						if Item:IsA("BasePart") then
 							Item.Color = Miscellaneous.WeaponMods_MuzzleFlashColor
 							Item.Material = Material
@@ -3340,85 +3386,10 @@ local LastHit
 ns__hookfunction(Module.__get("ThirdPersonObject"), "popCharacterModel", function(Original, self)
 	local Character, Position = Original(self)
 	if Visuals.Combat_HitGhosts and LastHit == self._player then
-		LastHit = nil
-		RenderHitCham(Character:Clone())
+		LastHit = RenderHitCham(Character:Clone())
 	end
 	return Character, Position
 end)
-
-for Index, Table in ipairs({FirearmObject, GrenadeObject, MeleeObject}) do
-	ns__hookfunction(Table, "step", function(Original, self, ...)
-		Original(self, ...)
-		if self._mainWeld and (Visuals.ViewModel_CustomOffset or Visuals.ViewModel_CustomRotation or Visuals.ViewModel_CustomRoll) then
-			local AimBlend = 1
-			if self.getActiveAimStats then
-				AimBlend = 0
-				for _,Sight in self:getActiveAimStats() do
-					AimBlend += Sight.sightaimspring.p
-				end
-				AimBlend = math.clamp(1 - AimBlend, 0, 1)
-			end
-
-			if AimBlend <= 0 then
-				return
-			end
-
-			local Custom = CFrame.identity
-			if Visuals.ViewModel_CustomOffset then
-				Custom *= CFrame.new(Visuals.ViewModel_OffsetX, Visuals.ViewModel_OffsetY, Visuals.ViewModel_OffsetZ)
-			end
-
-			if Visuals.ViewModel_CustomRotation then
-				Custom *= CFrame.Angles(math.rad(Visuals.ViewModel_RotationX), math.rad(Visuals.ViewModel_RotationY), math.rad(Visuals.ViewModel_RotationZ))
-			end
-
-			local Applied = CFrame.identity:Lerp(Custom, AimBlend)
-			self._mainWeld.C0 *= Applied
-
-			local ArmLeft, ArmRight = self._characterObject:getArmWelds()
-			if ArmLeft then
-				ArmLeft.C0 *= Applied
-			end
-
-			if ArmRight then
-				ArmRight.C0 *= Applied
-			end
-
-			if Visuals.ViewModel_CustomRoll then
-				local CameraCFrame = Camera.CFrame
-				local RootCFrame = self._characterObject:getRootPart().CFrame
-				local InverseRootSpace = RootCFrame:Inverse() * CameraCFrame * CFrame.Angles(0, 0, math.rad(
-					Visuals.ViewModel_Roll
-				) * AimBlend) * CameraCFrame:Inverse() * RootCFrame
-
-				self._mainWeld.C0 *= InverseRootSpace
-				if ArmLeft then
-					ArmLeft.C0 *= InverseRootSpace
-				end
-
-				if ArmRight then
-					ArmRight.C0 *= InverseRootSpace
-				end
-			end
-		end
-	end)
-
-	ns__hookfunction(Table, "getAnimLength", function(Original, self, Name, ...)
-		if (string.find(string.lower(Name), "unequip") or string.find(string.lower(Name), "equip")) and Miscellaneous.WeaponMods_InstantEquipUnequip then
-			return 0
-		end
-		return Original(self, Name, ...)
-	end)
-
-	if Index > 1 then
-		ns__hookfunction(Table, "walkSway", function(Original, self, ...)
-			if Miscellaneous.WeaponMods_NoWalkSway then
-				return CFrame.identity
-			end
-			return Original(self, ...)
-		end)
-	end
-end
 
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
 if RemoteEvent then
@@ -3518,7 +3489,10 @@ if RemoteEvent then
 			if Visuals.Combat_HitGhosts and not Visuals.Combat_HitGhostsOnKillOnly then
 				local Entry = CachedPlayers[Victim]
 				if Entry then
-					RenderHitCham(Entry._thirdPersonObject._characterModel:Clone())
+					local ThirdPersonObject = Entry._thirdPersonObject
+					if ThirdPersonObject then
+						RenderHitCham(ThirdPersonObject._characterModel:Clone())
+					end
 				end
 			end
 		end
@@ -3547,18 +3521,19 @@ RunService.PreRender:Connect(function(DeltaTime)
 	else
 		SpotLight.Enabled = false
 	end
+
 	local Now, LocalHeadPosition = os.clock(), GetLocalPosition()
 	HitMarkerModule:Update(Now)
 
 	for Index = #HitGhosts, 1, -1 do
-		local Cham = HitGhosts[Index]
-		local Progress = (Cham.Time - Now) / Visuals.Combat_HitGhostsLifetime
+		local Ghost = HitGhosts[Index]
+		local Progress = (Ghost.Time - Now) / Visuals.Combat_HitGhostsLifetime
 		if Progress <= 0 then
-			Cham.Model:Destroy()
+			Ghost.Model:Destroy()
 			table.remove(HitGhosts, Index)
 		else
 			local Transparency = 1 - Progress
-			for _,Part in Cham.Parts do
+			for _,Part in Ghost.Parts do
 				Part.Transparency = Transparency
 			end
 		end
@@ -3624,54 +3599,54 @@ RunService.Heartbeat:Connect(function(DeltaTime)
 	if Visuals.Combat_GrenadeTrajectory then
 		GrenadeModule:UpdateTrajectory()
 	end
+	ThirdPersonModule:Update(DeltaTime)
 
-	local RadarHack = IsSpawned and Visuals.Combat_RadarHack
-	for Player, Entry in next, CachedPlayers do
-		if Entry._isEnemy then
-			local Status = RadarHack and GetPlayerStatusEntry(Player)
-			if Status then
-				Status.isSpotted = true
-			end
-		end
+	if not IsSpawned or RoundSystemClientInterface.roundLock then
+		return
 	end
 
-	if IsSpawned then
-		if Visuals.Combat_AutoSpot then
-			local Enemies = {}
-			for Player, Entry in next, CachedPlayers do
-				if Entry._isEnemy then
-					table.insert(Enemies, Player)
+	if Visuals.Combat_RadarHack then
+		for Player, Entry in next, CachedPlayers do
+			if Entry._isEnemy then
+				local Status = GetPlayerStatusEntry(Player)
+				if Status then
+					Status.isSpotted = true
 				end
 			end
-
-			if #Enemies > 0 then
-				NetworkClientSend(NetworkClient, "spotplayers", Enemies, NetworkClient.getTime())
-			end
-		end
-
-		local Humanoid = GetLocalHumanoid()
-		if Humanoid and Miscellaneous.Movement_BunnyHop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			Humanoid.Jump = true
-		end
-
-		if Miscellaneous.Movement_NoSlideCooldown then
-			local LocalCharacter = GetLocalCharacter()
-			if LocalCharacter then
-				LocalCharacter.dived = false
-			end
-		end
-
-		if not RoundSystemClientInterface.roundLock then
-			if Aiming.RageBot_Enabled then
-				RageBotModule:Update()
-			end
-
-			if Miscellaneous.KnifeAura_Enabled then
-				KnifeAuraModule:Update()
-			end
 		end
 	end
-	ThirdPersonModule:Update(DeltaTime)
+
+	if Visuals.Combat_AutoSpot then
+		local Enemies = {}
+		for Player, Entry in next, CachedPlayers do
+			if Entry._isEnemy then
+				table.insert(Enemies, Player)
+			end
+		end
+		if #Enemies > 0 then
+			NetworkClientSend(NetworkClient, "spotplayers", Enemies, NetworkClient.getTime())
+		end
+	end
+
+	local Humanoid = GetLocalHumanoid()
+	if Humanoid and Miscellaneous.Movement_BunnyHop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+		Humanoid.Jump = true
+	end
+
+	if Miscellaneous.Movement_NoSlideCooldown then
+		local LocalCharacter = GetLocalCharacter()
+		if LocalCharacter then
+			LocalCharacter.dived = false
+		end
+	end
+
+	if Aiming.RageBot_Enabled then
+		RageBotModule:Update()
+	end
+
+	if Miscellaneous.KnifeAura_Enabled then
+		KnifeAuraModule:Update()
+	end
 end)
 
 local repupdate_LastTime, repupdate_ReverseTime
@@ -3737,25 +3712,27 @@ NetworkClient.send = function(self, Packet, ...)
 		local UniqueId, BulletData, Time = ...
 		local Bullets = BulletData.bullets
 		local Count = #Bullets
+		local Cache = SilentAimbotCache
+		SilentAimbotCache = nil
 
 		for Index = 1, Count do
 			Bullets[Index][2] += TicketAddition
 		end
 
 		if Aiming.Aimbot_Enabled and Aiming.Aimbot_Type == "Silent" then
-			if Aiming.Aimbot_BulletCache and SilentCache.Target and (os.clock() - SilentCache.Frame < 0.1) then
-				local Direction = SilentCache.Velocity.Unit
+			if Cache then
 				for Index = 1, Count do
-					Bullets[Index][1] = Direction
+					local Direction = Cache[Index]
+					if Direction then
+						Bullets[Index][1] = Direction
+					end
 				end
 			else
-				local Direction, Target, Entry, _Time = SilentAimbotModule:Solve(BulletData.firepos, BulletAcceleration, GetActiveWeapon()._weaponData.bulletspeed)
+				local Direction, Target, Entry = SilentAimbot_GetTarget(BulletData.firepos, -BulletAcceleration, GetActiveWeapon()._weaponData.bulletspeed)
 				if Direction and Target and Entry then
 					for Index = 1, Count do
 						Bullets[Index][1] = Direction
 					end
-					SilentCache.Player = Entry._player
-					SilentCache.Time = _Time
 				end
 			end
 		end
@@ -3794,7 +3771,7 @@ NetworkClient.send = function(self, Packet, ...)
 		end
 
 		if Miscellaneous.WeaponMods_UncookableGrenade and Fuse <= 0 then
-			Fuse = GetActiveWeapon():getWeaponStat("fusetime") or 5
+			Fuse = GetActiveWeapon()._weaponData.fusetime
 		end
 
 		if Miscellaneous.WeaponMods_CustomGrenadeFuse and Miscellaneous.WeaponMods_CustomGrenadeFuseOnImpact and Velocity.Magnitude > 0.01 then
@@ -3809,23 +3786,42 @@ NetworkClient.send = function(self, Packet, ...)
 	return NetworkClientSend(self, Packet, ...)
 end
 
-Library:BuildUI({Aiming, Visuals, Miscellaneous, Settings}, {
-	ESPModule, LightingCache, OnDeadBody, RefreshLighting, UpdateBloom, CustomSounds, Effects.breakwindow, PlaySoundId, {
-		"None", "Osu", "MLG", "Bonk", "Rust", "Metal", "Skeet", "Quack", "Katana", "Neverlose",
-		"Undertale", "Jet Set Radio", "TF2 Critical", "TF2 Frying Pan", "TF2 Alternative"
-	}
-}, {Camera, Lighting, DeadBodyFolder, Module.Method}, {PlayerDataClientInterface.getPlayerData, PlayerDataUtils.getCasePacketData}, Module.ExecutorName)
+local BloomEffect = ns__cloneref(Instance.new("BloomEffect"))
+BloomEffect.Enabled = false
+BloomEffect.Parent = Lighting
+
+Library:BuildUI({Aiming, Visuals, Miscellaneous, Settings}, {ESPModule, LightingCache, OnDeadBody,
+	function(Value)
+		if not Value then
+			for _,Setting in {"Ambient", "OutdoorAmbient", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "ShadowSoftness"} do
+				Lighting[Setting] = Visuals["Lighting_" .. Setting]
+			end
+			return
+		end
+
+		for Property, OriginalValue in next, LightingCache.OriginalValues do
+			Lighting[Property] = OriginalValue
+		end
+	end, function()
+		BloomEffect.Intensity = Visuals.Lighting_BloomIntensity
+		BloomEffect.Size = Visuals.Lighting_BloomSize
+		BloomEffect.Threshold = Visuals.Lighting_BloomThreshold
+		BloomEffect.Enabled = Visuals.Lighting_Bloom
+	end, ViewModelModule, CustomSounds, Effects.breakwindow, PlaySoundId, {
+	"None", "Osu", "MLG", "Bonk", "Rust", "Metal", "Skeet", "Quack", "Katana", "Neverlose",
+	"Undertale", "Jet Set Radio", "TF2 Critical", "TF2 Frying Pan", "TF2 Alternative"
+}}, {Camera, Lighting, DeadBodyFolder, Module.Method}, {PlayerDataClientInterface.getPlayerData, PlayerDataUtils.getCasePacketData}, Module.ExecutorName)
 
 Library:Toggle()
 
 pcall(function()
-	local Request = not isfile("NikoletoScripts/PhantomWare/Cache/Invite.nscache") and (httprequest or http_request or request)
+	local Request = not isfile("NikoletoScripts/PhantomWare/Cache/Discord.nscache") and (httprequest or http_request or request)
 	if Request then
 		if pcall(Request, {
 			Url = "http://127.0.0.1:6463/rpc?v=1", Method = "POST", Headers = {["Content-Type"] = "application/json", Origin = "https://discord.com"},
-			Body = HttpService:JSONEncode({cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = {code = "DwRT2nH93D"}})
+			Body = HttpService:JSONEncode({cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = {code = "DsGCKtxxEN"}})
 		}) then
-			writefile("NikoletoScripts/PhantomWare/Cache/Invite.nscache", "DwRT2nH93D")
+			writefile("NikoletoScripts/PhantomWare/Cache/Discord.nscache", "DsGCKtxxEN")
 		end
 	end
 end)
