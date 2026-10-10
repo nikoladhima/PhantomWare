@@ -2222,7 +2222,7 @@ function KnifeAuraModule:Update()
 		return
 	end
 
-		if Now >= self.NextHit then
+	if os.clock() >= self.NextHit then
 		local Origin, SelectedPart = GetLocalPosition(), Miscellaneous.KnifeAura_Part
 		local Name = SelectedPart == "Random" and (math.random(2) == 1 and "Head" or "Torso") or SelectedPart
 		local Range = Miscellaneous.KnifeAura_Range
