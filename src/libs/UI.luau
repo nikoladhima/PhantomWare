@@ -18,19 +18,17 @@ local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local CoreGui = ns__cloneref(game:GetService("CoreGui"))
 local Players = game:GetService("Players")
-local Teams = game:GetService("Teams")
 
 local PreRender = RunService.PreRender
 local Heartbeat = RunService.Heartbeat
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = ns__cloneref(LocalPlayer:GetMouse())
-local function IsOutsidePopup(Position, Size)
-    return Mouse.X < Position.X or Mouse.X > Position.X + Size.X or Mouse.Y < Position.Y - 21 or Mouse.Y > Position.Y + Size.Y
-end
+local Camera = workspace.CurrentCamera
 
 local ScreenGui = ns__cloneref(Instance.new("ScreenGui"))
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.Enabled = false
 ScreenGui.Parent = CoreGui
 
 local Toggles = {}
@@ -38,14 +36,10 @@ local Options = {}
 
 local Library = {
     Toggled = true,
+    OptimizedDragging = false,
 
     Toggles = Toggles,
     Options = Options,
-
-    Registry = {},
-    RegistryMap = {},
-
-    HudRegistry = {},
 
     FontColor = Color3.fromRGB(255, 255, 255),
     MainColor = Color3.fromRGB(28, 28, 28),
@@ -63,8 +57,8 @@ local Library = {
     ScreenGui = ScreenGui
 }
 
-local UiTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local ToggleTweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local UITweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local ToggleTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local UIPropertyTweens = setmetatable({}, {__mode = 'k'})
 
 local function TweenGuiProperty(Instance, Property, Target, TweenInfoOverride)
@@ -78,6 +72,7 @@ local function TweenGuiProperty(Instance, Property, Target, TweenInfoOverride)
     if CurrentTween and CurrentTween.Target == Target then
         return
     end
+
     if CurrentTween then
         CurrentTween.Tween:Cancel()
     end
@@ -87,7 +82,7 @@ local function TweenGuiProperty(Instance, Property, Target, TweenInfoOverride)
         return
     end
 
-    local Tween = TweenService:Create(Instance, TweenInfoOverride or UiTweenInfo, {[Property] = Target})
+    local Tween = TweenService:Create(Instance, TweenInfoOverride or UITweenInfo, {[Property] = Target})
     local TweenState = {Tween = Tween, Target = Target}
     PropertyTweens[Property] = TweenState
     Tween.Completed:Connect(function()
@@ -98,93 +93,160 @@ local function TweenGuiProperty(Instance, Property, Target, TweenInfoOverride)
     Tween:Play()
 end
 
-local RainbowStep = 0
-local Hue = 0
-
-local Step, Step2 = 1/60, 1/400
-PreRender:Connect(function(Delta)
-    RainbowStep = RainbowStep + Delta
-    if RainbowStep >= Step then
-        RainbowStep = 0
-
-        Hue += Step2
-
-        if Hue > 1 then
-            Hue = 0
-        end
-
-        Library.CurrentRainbowHue = Hue
-        Library.CurrentRainbowColor = Color3.fromHSV(Hue, 0.8, 1)
-    end
-end)
-
-local function GetPlayersString()
-    local PlayerList = Players:GetPlayers()
-
-    for Index = 1, #PlayerList do
-        PlayerList[Index] = PlayerList[Index].Name
-    end
-
-    table.sort(PlayerList, function(String1, String2)
-        return String1 < String2
-    end)
-
-    return PlayerList
-end
-
-local function GetTeamsString()
-    local TeamList = Teams:GetTeams()
-
-    for Index = 1, #TeamList do
-        TeamList[Index] = TeamList[Index].Name
-    end
-
-    table.sort(TeamList, function(String1, String2)
-        return String1 < String2
-    end)
-
-    return TeamList
-end
-
-function Library:SafeCallback(f, ...)
-    if not f then
-        return
-    end
-
-    if not Library.NotifyOnError then
-        return f(...)
-    end
-
-    local Success, Event = pcall(f, ...)
-
-    if not Success then
-        local _,i = Event:find(":%d+: ")
-
-        if not i then
-            return Library:Notify(Event)
-        end
-
-        return Library:Notify(Event:sub(i + 1), 3)
+function Library:SafeCallback(Function, ...)
+    if Function then
+        return Function(...)
     end
 end
 
 function Library:Create(Class, Properties)
     local _Instance = Class
-
     if type(Class) == "string" then
         _Instance = ns__cloneref(Instance.new(Class))
     end
-
     for Property, Value in next, Properties do
         _Instance[Property] = Value
     end
-
     return _Instance
+end
+
+function Library:CreateLocalTextPopup(Title, Placeholder, Action, MultiLine, Callback)
+    local Popup = {}
+    local Frame = self:Create("Frame", {
+        Active = true,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = self.BackgroundColor,
+        BorderColor3 = self.OutlineColor,
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = MultiLine and UDim2.fromOffset(560, 360) or UDim2.fromOffset(320, 112),
+        Visible = false,
+        ZIndex = 12000,
+        Parent = ScreenGui
+    })
+    self:Create("Frame", {
+        BackgroundColor3 = self.AccentColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 2),
+        ZIndex = 12001,
+        Parent = Frame
+    })
+    Popup.Title = self:CreateLabel({
+        Position = UDim2.fromOffset(10, 7),
+        Size = UDim2.new(1, -20, 0, 20),
+        Text = Title,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 12002,
+        Parent = Frame
+    })
+    local InputParent = Frame
+    if MultiLine then
+        InputParent = self:Create("ScrollingFrame", {
+            BackgroundColor3 = self.MainColor,
+            BorderColor3 = self.OutlineColor,
+            Position = UDim2.fromOffset(10, 35),
+            Size = UDim2.new(1, -20, 1, -77),
+            CanvasSize = UDim2.fromOffset(0, 0),
+            ClipsDescendants = true,
+            ScrollBarThickness = 4,
+            ZIndex = 12002,
+            Parent = Frame
+        })
+    end
+    Popup.Input = self:Create("TextBox", {
+        BackgroundColor3 = self.MainColor,
+        BackgroundTransparency = MultiLine and 1 or 0,
+        BorderColor3 = self.OutlineColor,
+        BorderSizePixel = MultiLine and 0 or 1,
+        Position = MultiLine and UDim2.fromOffset(4, 4) or UDim2.fromOffset(10, 35),
+        Size = MultiLine and UDim2.new(1, -14, 1, -8) or UDim2.new(1, -20, 0, 26),
+        ClearTextOnFocus = false,
+        MultiLine = MultiLine,
+        TextWrapped = MultiLine,
+        PlaceholderText = Placeholder,
+        Text = "",
+        TextColor3 = self.FontColor,
+        TextSize = 13,
+        Font = self.Font,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = MultiLine and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
+        ZIndex = 12003,
+        Parent = InputParent
+    })
+    if MultiLine then
+        local function ResizeInput()
+            local Height = TextService:GetTextSize(Popup.Input.Text, 13, Popup.Input.Font, Vector2.new(math.max(1, InputParent.AbsoluteSize.X - 14), math.huge)).Y + 8
+            Popup.Input.Size = UDim2.new(1, -14, 0, math.max(26, InputParent.AbsoluteSize.Y - 8, Height))
+            InputParent.CanvasSize = UDim2.fromOffset(0, Height + 8)
+        end
+        Popup.Input:GetPropertyChangedSignal("Text"):Connect(ResizeInput)
+        InputParent:GetPropertyChangedSignal("AbsoluteSize"):Connect(ResizeInput)
+    end
+    function Popup:Hide()
+        self.Input:ReleaseFocus()
+        Frame.Visible = false
+        Library.OpenedFrames[Frame] = nil
+    end
+    function Popup:Show(Text)
+        local Focused = UserInputService:GetFocusedTextBox()
+        if Focused then
+            Focused:ReleaseFocus()
+        end
+        self.Input.Text = Text or ""
+        Frame.Visible = true
+        Library.OpenedFrames[Frame] = Frame
+        self.Input:CaptureFocus()
+    end
+    local function Submit()
+        if Callback(Popup.Input.Text) then
+            Popup:Hide()
+        end
+    end
+    local Buttons = {Action}
+    if MultiLine and setclipboard then
+        Buttons[#Buttons + 1] = "Copy"
+    end
+    Buttons[#Buttons + 1] = "Cancel"
+    for Index, Text in ipairs(Buttons) do
+        local Button = self:Create("TextButton", {
+            AutoButtonColor = false,
+            BackgroundColor3 = self.MainColor,
+            BorderColor3 = self.OutlineColor,
+            Position = Index == #Buttons and UDim2.new(1, -88, 1, -32) or UDim2.new(0, 10 + (Index - 1) * 84, 1, -32),
+            Size = UDim2.fromOffset(78, 22),
+            Text = Text,
+            TextColor3 = self.FontColor,
+            TextSize = 13,
+            Font = self.Font,
+            ZIndex = 12003,
+            Parent = Frame
+        })
+        self:OnHighlight(Button, Button, {BorderColor3 = "AccentColor"}, {BorderColor3 = "OutlineColor"})
+        Button.Activated:Connect(function()
+            if not Library:MouseIsOverOpenedFrame(Button) then
+                if Index == 1 then
+                    Submit()
+                elseif Text == "Copy" then
+                    setclipboard(Popup.Input.Text)
+                else
+                    Popup:Hide()
+                end
+            end
+        end)
+    end
+    if not MultiLine then
+        Popup.Input.FocusLost:Connect(function(EnterPressed)
+            if EnterPressed then
+                Submit()
+            end
+        end)
+    end
+    return Popup
 end
 
 function Library:ApplyTextStroke(Inst)
     Inst.TextStrokeTransparency = 1
-    Library:Create('UIStroke', {
+    Library:Create("UIStroke", {
         Color = Color3.new(0, 0, 0),
         Thickness = 1,
         LineJoinMode = Enum.LineJoinMode.Miter,
@@ -192,8 +254,8 @@ function Library:ApplyTextStroke(Inst)
     })
 end
 
-function Library:CreateLabel(Properties, IsHud)
-    local _Instance = Library:Create('TextLabel', {
+function Library:CreateLabel(Properties)
+    local _Instance = Library:Create("TextLabel", {
         BackgroundTransparency = 1,
         Font = Library.Font,
         TextColor3 = Library.FontColor,
@@ -202,9 +264,6 @@ function Library:CreateLabel(Properties, IsHud)
     })
 
     Library:ApplyTextStroke(_Instance)
-    Library:AddToRegistry(_Instance, {
-        TextColor3 = "FontColor",
-    }, IsHud)
 
     return Library:Create(_Instance, Properties)
 end
@@ -222,11 +281,34 @@ function Library:MakeDraggable(Instance, Cutoff)
                 return
             end
 
-            while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-                Instance.Position = UDim2.new(
-                    0, Mouse.X - ObjPos.X + (Instance.Size.X.Offset * Instance.AnchorPoint.X), 0,  Mouse.Y - ObjPos.Y + (Instance.Size.Y.Offset * Instance.AnchorPoint.Y)
+            local Outline
+            if Library.OptimizedDragging then
+                Outline = Library:Create("Frame", {
+                    BackgroundTransparency = 1, BorderSizePixel = 0,
+                    Position = UDim2.fromOffset(Instance.AbsolutePosition.X, Instance.AbsolutePosition.Y),
+                    Size = UDim2.fromOffset(Instance.AbsoluteSize.X, Instance.AbsoluteSize.Y),
+                    ZIndex = 20000, Parent = ScreenGui
+                })
+                Library:Create("UIStroke", {Color = Library.FontColor, Thickness = 1, Parent = Outline})
+            end
+
+            local Position = Instance.Position
+            while Library:IsInputActive(Instance) and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+                Position = UDim2.fromOffset(
+                    Mouse.X - ObjPos.X + Instance.AbsoluteSize.X * Instance.AnchorPoint.X,
+                    Mouse.Y - ObjPos.Y + Instance.AbsoluteSize.Y * Instance.AnchorPoint.Y
                 )
+                if Outline then
+                    Outline.Position = UDim2.fromOffset(Mouse.X - ObjPos.X, Mouse.Y - ObjPos.Y)
+                elseif Instance.Position ~= Position then
+                    Instance.Position = Position
+                end
                 PreRender:Wait()
+            end
+
+            if Outline then
+                Outline:Destroy()
+                Instance.Position = Position
             end
         end
     end)
@@ -243,7 +325,7 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         Visible = false
     })
 
-    local Label = Library:CreateLabel({
+    Library:CreateLabel({
         Position = UDim2.fromOffset(3, 1),
         Size = UDim2.fromOffset(X, Y),
         TextSize = 14,
@@ -253,13 +335,6 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         ZIndex = Tooltip.ZIndex + 1,
         Parent = Tooltip
     })
-
-    Library:AddToRegistry(Tooltip, {
-        BackgroundColor3 = "MainColor",
-        BorderColor3 = "OutlineColor"
-    })
-
-    Library:AddToRegistry(Label, {TextColor3 = "FontColor"})
 
     local IsHovering = false
 
@@ -290,41 +365,29 @@ function Library:OnHighlight(HighlightInstance, Instance, Properties, Properties
         local Blockers = Library.HoverBlockers and Library.HoverBlockers[HighlightInstance]
         if Blockers then
             for _,Blocker in next, Blockers do
-                if typeof(Blocker) == 'Instance' and Blocker:IsA('GuiObject') and Blocker.Visible and Library:IsMouseOverFrame(Blocker) then
+                if Blocker.Visible and Library:IsMouseOverFrame(Blocker) then
                     return
                 end
             end
         end
 
-        local Reg = Library.RegistryMap[Instance]
-
         for Property, ColorIdx in next, Properties do
             local Value = Library[ColorIdx] or ColorIdx
-            if typeof(Value) == 'Color3' then
+            if typeof(Value) == "Color3" then
                 TweenGuiProperty(Instance, Property, Value)
             else
                 Instance[Property] = Value
-            end
-
-            if Reg and Reg.Properties[Property] then
-                Reg.Properties[Property] = ColorIdx
             end
         end
     end)
 
     HighlightInstance.MouseLeave:Connect(function()
-        local Reg = Library.RegistryMap[Instance]
-
         for Property, ColorIdx in next, PropertiesDefault do
             local Value = Library[ColorIdx] or ColorIdx
-            if typeof(Value) == 'Color3' then
+            if typeof(Value) == "Color3" then
                 TweenGuiProperty(Instance, Property, Value)
             else
                 Instance[Property] = Value
-            end
-
-            if Reg and Reg.Properties[Property] then
-                Reg.Properties[Property] = ColorIdx
             end
         end
     end)
@@ -332,9 +395,7 @@ end
 
 local function GetTopmostGuiAtPosition(Position)
     if not Position then
-        local MousePosition = UserInputService:GetMouseLocation()
-        local GuiInset = GuiService:GetGuiInset()
-        Position = Vector2.new(MousePosition.X - GuiInset.X, MousePosition.Y - GuiInset.Y)
+        Position = UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
     end
 
     local Success, GuiObjects = pcall(function()
@@ -347,7 +408,7 @@ local function GetTopmostGuiAtPosition(Position)
 
     local Topmost
     for _,Object in ipairs(GuiObjects) do
-        if Object:IsDescendantOf(ScreenGui) and Object.Name ~= "WindowInputShield" and (not Topmost or Object.ZIndex > Topmost.ZIndex) then
+        if Object:IsDescendantOf(ScreenGui) and (not Topmost or Object.ZIndex > Topmost.ZIndex) then
             Topmost = Object
         end
     end
@@ -364,6 +425,34 @@ function Library:IsInputActive(Target)
         Current = Current.Parent
     end
     return true
+end
+
+function Library:ClosePopups(Parent)
+    for Frame, Anchor in next, self.OpenedFrames do
+        if Anchor == Parent or Anchor:IsDescendantOf(Parent) then
+            self.OpenedFrames[Frame] = nil
+            Frame.Visible = false
+            self:ClosePopups(Frame)
+        end
+    end
+
+    if self.ConfigOverlay then
+        local HasMenu = false
+        for Frame in next, self.OpenedFrames do
+            if Frame.Name == 'ConfigMenu' then
+                HasMenu = true
+                break
+            end
+        end
+        self.ConfigOverlay.Visible = HasMenu
+    end
+end
+
+function Library:IsMouseOverFrame(Frame)
+    local AbsolutePosition, AbsoluteSize = Frame.AbsolutePosition, Frame.AbsoluteSize
+    if Mouse.X >= AbsolutePosition.X and Mouse.X <= AbsolutePosition.X + AbsoluteSize.X and Mouse.Y >= AbsolutePosition.Y and Mouse.Y <= AbsolutePosition.Y + AbsoluteSize.Y then
+        return true
+    end
 end
 
 function Library:MouseIsOverOpenedFrame(Target, InputRoot, InputPosition)
@@ -389,22 +478,6 @@ function Library:MouseIsOverOpenedFrame(Target, InputRoot, InputPosition)
         end
     end
 end
-function Library:IsMouseOverFrame(Frame)
-    local AbsolutePosition, AbsoluteSize = Frame.AbsolutePosition, Frame.AbsoluteSize
-    if Mouse.X >= AbsolutePosition.X and Mouse.X <= AbsolutePosition.X + AbsoluteSize.X and Mouse.Y >= AbsolutePosition.Y and Mouse.Y <= AbsolutePosition.Y + AbsoluteSize.Y then
-        return true
-    end
-end
-
-function Library:InConfigMenu(Instance)
-    local Parent = Instance.Parent
-    while Parent do
-        if Parent.Name == 'ConfigMenu' then
-            return true
-        end
-        Parent = Parent.Parent
-    end
-end
 
 function Library:AddHoverBlocker(Toggle, Blocker)
     Library.HoverBlockers = Library.HoverBlockers or setmetatable({}, {__mode = 'k'})
@@ -424,45 +497,28 @@ function Library:AddHoverBlocker(Toggle, Blocker)
     List[#List + 1] = Blocker
 end
 
-function Library:BoostZ(Instance)
-    if Instance:IsA('GuiObject') and not Instance:GetAttribute('ZBoosted') then
-        Instance:SetAttribute('ZBoosted', true)
-        Instance.ZIndex = Instance.ZIndex + 20
-    end
-end
-
-function Library:BoostSubtree(Root)
-    Library:BoostZ(Root)
-    for _,Descendant in next, Root:GetDescendants() do
-        Library:BoostZ(Descendant)
-    end
-end
-
 function Library:RefreshToggleHover(Toggle)
     local Outer = Toggle.HoverOuter
     if not Outer then
         return
     end
-    local Blocked = false
-    local Blockers = Library.HoverBlockers and Library.HoverBlockers[Toggle.HoverRegion]
+
+    local Blocked, Blockers = false, Library.HoverBlockers and Library.HoverBlockers[Toggle.HoverRegion]
     if Blockers then
         for _,Blocker in next, Blockers do
-            if typeof(Blocker) == 'Instance' and Blocker:IsA('GuiObject') and Blocker.Visible and Library:IsMouseOverFrame(Blocker) then
+            if Blocker.Visible and Library:IsMouseOverFrame(Blocker) then
                 Blocked = true
                 break
             end
         end
     end
-    TweenGuiProperty(Outer, 'BorderColor3', Blocked and Color3.new(0, 0, 0) or Library.AccentColor)
-    local Reg = Library.RegistryMap[Outer]
-    if Reg and Reg.Properties.BorderColor3 then
-        Reg.Properties.BorderColor3 = Blocked and 'Black' or 'AccentColor'
-    end
+
+    TweenGuiProperty(Outer, "BorderColor3", Blocked and Color3.new(0, 0, 0) or Library.AccentColor)
 end
 
 function Library:UpdateDependencyBoxes()
-    for _,Depbox in next, Library.DependencyBoxes do
-        Depbox:Update()
+    for _,Dependencybox in next, Library.DependencyBoxes do
+        Dependencybox:Update()
     end
 end
 
@@ -476,69 +532,45 @@ function Library:GetTextBounds(Text, Font, Size, Resolution)
 end
 
 function Library:GetDarkerColor(Color)
-    local H, S, V = Color3.toHSV(Color)
+    local H, S, V = Color:ToHSV()
     return Color3.fromHSV(H, S, V / 1.5)
 end
 Library.AccentColorDark = Library:GetDarkerColor(Library.AccentColor)
 
-function Library:AddToRegistry(Instance, Properties, IsHud)
-    local Index = #Library.Registry + 1
-    local Data = {
-        Instance = Instance,
-        Properties = Properties,
-        Index = Index,
-    }
+local function MakeScroll(Parent, Position, Size)
+    local Scroll = Library:Create("ScrollingFrame", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Position = Position,
+        Size = Size,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        BottomImage = "",
+        TopImage = "",
+        ScrollBarThickness = 5,
+        ZIndex = 2,
+        Parent = Parent,
+    })
 
-    table.insert(Library.Registry, Data)
-    Library.RegistryMap[Instance] = Data
+    local Layout = Library:Create("UIListLayout", {
+        Padding = UDim.new(0, 4),
+        Parent = Scroll
+    })
+    Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.fromOffset(0, Layout.AbsoluteContentSize.Y)
+    end)
 
-    if IsHud then
-        table.insert(Library.HudRegistry, Data)
-    end
+    return Scroll
 end
-
-function Library:RemoveFromRegistry(Instance)
-    local Data = Library.RegistryMap[Instance]
-
-    if Data then
-        for Index = #Library.Registry, 1, -1 do
-            if Library.Registry[Index] == Data then
-                table.remove(Library.Registry, Index)
-            end
-        end
-
-        for Index = #Library.HudRegistry, 1, -1 do
-            if Library.HudRegistry[Index] == Data then
-                table.remove(Library.HudRegistry, Index)
-            end
-        end
-
-        Library.RegistryMap[Instance] = nil
-    end
-end
-
-function Library:UpdateColorsUsingRegistry()
-    for Index, Object in next, Library.Registry do
-        for Property, ColorIdx in next, Object.Properties do
-            if type(ColorIdx) == "string" then
-                Object.Instance[Property] = Library[ColorIdx]
-            elseif type(ColorIdx) == 'function' then
-                Object.Instance[Property] = ColorIdx()
-            end
-        end
-    end
-end
-
-ScreenGui.DescendantRemoving:Connect(function(Instance)
-    if Library.RegistryMap[Instance] then
-        Library:RemoveFromRegistry(Instance)
-    end
-end)
 
 local BaseAddons = {}
 
 do
     local Funcs = {}
+
+    local function IsOutsidePopup(Position, Size)
+        return Mouse.X < Position.X or Mouse.X > Position.X + Size.X or Mouse.Y < Position.Y - 21 or Mouse.Y > Position.Y + Size.Y
+    end
+
 
     function Funcs:AddColorPicker(Index, Info)
         local ToggleLabel = self.TextLabel
@@ -553,12 +585,11 @@ do
             Value = Info.Default,
             Transparency = ClampTransparency(Info.Transparency),
             Type = 'ColorPicker',
-            Title = type(Info.Title) == "string" and Info.Title or 'Color picker',
             Callback = Info.Callback or function(Color) end,
         }
 
         function ColorPicker:SetHSVFromRGB(Color)
-            local H, S, V = Color3.toHSV(Color)
+            local H, S, V = Color:ToHSV()
 
             ColorPicker.Hue = H
             ColorPicker.Saturation = S
@@ -602,10 +633,13 @@ do
             Parent = ScreenGui
         })
 
-        local function UpdatePickerPosition()
+        local function UpdatePickerPosition(Force)
+            if not PickerFrameOuter.Visible and not Force then
+                return
+            end
             local Viewport = ScreenGui.AbsoluteSize
             if Viewport.X <= 0 or Viewport.Y <= 0 then
-                Viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+                Viewport = Camera.ViewportSize
             end
 
             local AnchorPosition = DisplayFrame.AbsolutePosition
@@ -640,7 +674,7 @@ do
             Parent = PickerFrameOuter
         })
 
-        local Highlight = Library:Create("Frame", {
+        Library:Create("Frame", {
             BackgroundColor3 = Library.AccentColor,
             BorderSizePixel = 0,
             Size = UDim2.new(1, 0, 0, 2),
@@ -761,6 +795,7 @@ do
             Font = Library.Font,
             PlaceholderColor3 = Color3.fromRGB(190, 190, 190),
             PlaceholderText = 'Hex color',
+            ClearTextOnFocus = false,
             Text = '#FFFFFF',
             TextColor3 = Library.FontColor,
             TextSize = 14,
@@ -806,8 +841,6 @@ do
                 Parent = TransparencyBoxOuter,
             })
 
-            Library:AddToRegistry(TransparencyBoxInner, {BorderColor3 = "OutlineColor" })
-
             Library:Create("ImageLabel", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 1, 0),
@@ -834,145 +867,6 @@ do
         })
         end
 
-        local ContextMenu = {}
-        do
-            ContextMenu.Options = {}
-            ContextMenu.Container = Library:Create("Frame", {
-                Active = true,
-                BorderColor3 = Color3.new(),
-                ZIndex = 34,
-
-                Visible = false,
-                Parent = ScreenGui
-            })
-
-            ContextMenu.Inner = Library:Create("Frame", {
-                BackgroundColor3 = Library.BackgroundColor,
-                BorderColor3 = Library.OutlineColor,
-                BorderMode = Enum.BorderMode.Inset,
-                Size = UDim2.fromScale(1, 1),
-                ZIndex = 35,
-                Parent = ContextMenu.Container,
-            })
-
-            Library:Create('UIListLayout', {
-                Name = 'Layout',
-                FillDirection = Enum.FillDirection.Vertical,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-                Parent = ContextMenu.Inner,
-            })
-
-            Library:Create('UIPadding', {
-                Name = 'Padding',
-                PaddingLeft = UDim.new(0, 4),
-                Parent = ContextMenu.Inner,
-            })
-
-            local function updateMenuPosition()
-                ContextMenu.Container.Position = UDim2.fromOffset(
-                    (DisplayFrame.AbsolutePosition.X + DisplayFrame.AbsoluteSize.X) + 4,
-                    DisplayFrame.AbsolutePosition.Y + 1
-                )
-            end
-
-            local function updateMenuSize()
-                local menuWidth = 60
-                for i, label in next, ContextMenu.Inner:GetChildren() do
-                    if label:IsA('TextLabel') then
-                        menuWidth = math.max(menuWidth, label.TextBounds.X)
-                    end
-                end
-
-                ContextMenu.Container.Size = UDim2.fromOffset(
-                    menuWidth + 8,
-                    ContextMenu.Inner.Layout.AbsoluteContentSize.Y + 4
-                )
-            end
-
-            DisplayFrame:GetPropertyChangedSignal('AbsolutePosition'):Connect(updateMenuPosition)
-            ContextMenu.Inner.Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(updateMenuSize)
-
-            task.spawn(updateMenuPosition)
-            task.spawn(updateMenuSize)
-
-            Library:AddToRegistry(ContextMenu.Inner, {
-                BackgroundColor3 = "BackgroundColor",
-                BorderColor3 = "OutlineColor",
-            })
-
-            function ContextMenu:Show()
-                self.Container.Visible = true
-                Library.OpenedFrames[self.Container] = true
-            end
-
-            function ContextMenu:Hide()
-                self.Container.Visible = false
-                Library.OpenedFrames[self.Container] = nil
-            end
-
-            function ContextMenu:AddOption(Str, Callback)
-                if type(Callback) ~= 'function' then
-                    Callback = function() end
-                end
-
-                local Button = Library:CreateLabel({
-                    Active = true,
-                    Size = UDim2.new(1, 0, 0, 15),
-                    TextSize = 13,
-                    Text = Str,
-                    ZIndex = 36,
-                    Parent = self.Inner,
-                    TextXAlignment = Enum.TextXAlignment.Left
-                })
-
-                Library:OnHighlight(Button, Button, 
-                    {TextColor3 = "AccentColor"},
-                    {TextColor3 = "FontColor"}
-                )
-
-                Button.InputBegan:Connect(function(Input)
-                    if Input.UserInputType ~= Enum.UserInputType.MouseButton1 or Library:MouseIsOverOpenedFrame(Button) then
-                        return
-                    end
-
-                    Callback()
-                end)
-            end
-
-            ContextMenu:AddOption('Copy color', function()
-                Library.ColorClipboard = ColorPicker.Value
-                Library:Notify('Copied color!', 2)
-            end)
-
-            ContextMenu:AddOption('Paste color', function()
-                if not Library.ColorClipboard then
-                    return Library:Notify('You have not copied a color!', 2)
-                end
-                ColorPicker:SetValueRGB(Library.ColorClipboard, ColorPicker.Transparency)
-            end)
-
-
-            ContextMenu:AddOption('Copy HEX', function()
-                pcall(setclipboard, ColorPicker.Value:ToHex())
-                Library:Notify('Copied hex code to clipboard!', 2)
-            end)
-
-            ContextMenu:AddOption('Copy RGB', function()
-                pcall(setclipboard, table.concat({math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', '))
-                Library:Notify('Copied RGB values to clipboard!', 2)
-            end)
-
-        end
-
-        Library:AddToRegistry(PickerFrameInner, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-        Library:AddToRegistry(Highlight, {BackgroundColor3 = "AccentColor", })
-        Library:AddToRegistry(SatVibMapInner, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-
-        Library:AddToRegistry(HueBoxInner, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"})
-        Library:AddToRegistry(RGBBoxBase.Frame, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"})
-        Library:AddToRegistry(RGBBox, {TextColor3 = "FontColor"})
-        Library:AddToRegistry(HueBox, {TextColor3 = "FontColor"})
-
         local SequenceTable = {}
 
         for Hue = 0, 1, 0.1 do
@@ -988,19 +882,21 @@ do
         HueBox.FocusLost:Connect(function(Enter)
             if Enter then
                 local Success, Result = pcall(Color3.fromHex, HueBox.Text)
-                if Success and typeof(Result) == 'Color3' then
-                    ColorPicker.Hue, ColorPicker.Saturation, ColorPicker.Vib = Color3.toHSV(Result)
+                if Success and typeof(Result) == "Color3" then
+                    ColorPicker.Hue, ColorPicker.Saturation, ColorPicker.Vib = Result:ToHSV()
                 end
             end
-
             ColorPicker:Display()
         end)
 
         RGBBox.FocusLost:Connect(function(Enter)
             if Enter then
-                local R, G, B = RGBBox.Text:match('(%d+),%s*(%d+),%s*(%d+)')
-                if R and G and B then
-                    ColorPicker.Hue, ColorPicker.Saturation, ColorPicker.Vib = Color3.toHSV(Color3.fromRGB(R, G, B))
+                local R, G, B = string.match(RGBBox.Text, '^%s*(%d+)%s*,%s*(%d+)%s*,%s*(%d+)%s*$')
+                if R then
+                    R, G, B = tonumber(R), tonumber(G), tonumber(B)
+                    if R <= 255 and G <= 255 and B <= 255 then
+                        ColorPicker.Hue, ColorPicker.Saturation, ColorPicker.Vib = Color3.fromRGB(R, G, B):ToHSV()
+                    end
                 end
             end
             ColorPicker:Display()
@@ -1013,20 +909,24 @@ do
             ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Saturation, ColorPicker.Vib)
             SatVibMap.BackgroundColor3 = Color3.fromHSV(ColorPicker.Hue, 1, 1)
 
+            DisplayFrame:SetAttribute("FadeTransparency", ColorPicker.Transparency)
             Library:Create(DisplayFrame, {
                 BackgroundColor3 = ColorPicker.Value,
                 BackgroundTransparency = ColorPicker.Transparency,
                 BorderColor3 = Library:GetDarkerColor(ColorPicker.Value)
             })
+            TweenGuiProperty(DisplayFrame, "BackgroundTransparency", ColorPicker.Transparency)
 
             local function TweenCursor(Object, Current, Target, Duration)
                 if Current then
                     Current:Cancel()
                 end
+        
                 if ColorPicker.Dragging then
                     Object.Position = Target
                     return
                 end
+
                 local Tween = TweenService:Create(Object, TweenInfo.new(Duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = Target})
                 Tween:Play()
                 return Tween
@@ -1036,34 +936,24 @@ do
             HueTween = TweenCursor(HueCursor, HueTween, UDim2.new(0, 0, ColorPicker.Hue, 0), 0.08)
             if TransparencyBoxInner then
                 TransparencyTween = TweenCursor(TransparencyCursor, TransparencyTween, UDim2.new(1 - ColorPicker.Transparency, 0, 0, 0), 0.08)
-            end
-
-            if TransparencyBoxInner then
                 TransparencyBoxInner.BackgroundColor3 = ColorPicker.Value
             end
 
             HueBox.Text = '#' .. ColorPicker.Value:ToHex()
             RGBBox.Text = table.concat({math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', ')
 
-            local Changed = OldValue ~= nil and (ColorPicker.Value ~= OldValue or ColorPicker.Transparency ~= OldTransparency)
+            local Changed = OldValue and (ColorPicker.Value ~= OldValue or ColorPicker.Transparency ~= OldTransparency)
             LastValue, LastTransparency = ColorPicker.Value, ColorPicker.Transparency
             if not Silent and Changed then
                 Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value, ColorPicker.Transparency)
-                Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value, ColorPicker.Transparency)
             end
-        end
-
-        function ColorPicker:OnChanged(Func)
-            ColorPicker.Changed = Func
-            Func(ColorPicker.Value, ColorPicker.Transparency)
         end
 
         PickerFrameOuter.ZIndex += 5000
-        for _,Descendant in ipairs(PickerFrameOuter:GetDescendants()) do
-            if Descendant:IsA("GuiObject") then
-                Descendant.ZIndex += 5000
-            end
+        for _,Descendant in ipairs(PickerFrameOuter:QueryDescendants("GuiObject")) do
+            Descendant.ZIndex += 5000
         end
+
         function ColorPicker:Show()
             for Frame, Value in next, Library.OpenedFrames do
                 if Frame.Name == "Color" then
@@ -1072,9 +962,9 @@ do
                 end
             end
 
-            UpdatePickerPosition()
+            UpdatePickerPosition(true)
             PickerFrameOuter.Visible = true
-            Library.OpenedFrames[PickerFrameOuter] = true
+            Library.OpenedFrames[PickerFrameOuter] = DisplayFrame
         end
 
         function ColorPicker:Hide()
@@ -1084,18 +974,10 @@ do
             Library.OpenedFrames[PickerFrameOuter] = nil
         end
 
-        function ColorPicker:SetValue(HSV, Transparency, Silent)
-            ColorPicker.Transparency = ClampTransparency(Transparency)
-            ColorPicker:SetHSVFromRGB(Color3.fromHSV(HSV[1], HSV[2], HSV[3]))
-            ColorPicker:Display(Silent)
-            Library:UpdateDependencyBoxes()
-        end
-
         function ColorPicker:SetValueRGB(Color, Transparency, Silent)
             ColorPicker.Transparency = ClampTransparency(Transparency)
             ColorPicker:SetHSVFromRGB(Color)
             ColorPicker:Display(Silent)
-            Library:UpdateDependencyBoxes()
         end
 
         local function UpdateDragValue()
@@ -1154,15 +1036,7 @@ do
             if PickerFrameOuter.Visible then
                 ColorPicker:Hide()
             else
-                ContextMenu:Hide()
                 ColorPicker:Show()
-            end
-        end)
-
-        DisplayFrame.MouseButton2Click:Connect(function()
-            if not Library:MouseIsOverOpenedFrame(DisplayFrame) then
-                ContextMenu:Show()
-                ColorPicker:Hide()
             end
         end)
 
@@ -1182,16 +1056,6 @@ do
                 if IsOutsidePopup(AbsolutePosition, AbsoluteSize) and not Library:IsMouseOverFrame(DisplayFrame) then
                     ColorPicker:Hide()
                 end
-
-                if not Library:IsMouseOverFrame(ContextMenu.Container) then
-                    ContextMenu:Hide()
-                end
-            end
-
-            if Input.UserInputType == Enum.UserInputType.MouseButton2 and ContextMenu.Container.Visible then
-                if not Library:IsMouseOverFrame(ContextMenu.Container) and not Library:IsMouseOverFrame(DisplayFrame) then
-                    ContextMenu:Hide()
-                end
             end
         end)
 
@@ -1203,9 +1067,8 @@ do
     end
 
     function Funcs:AddKeyPicker(Index, Info)
-        local ParentObj = self
+        local ParentToggle = self.ParentToggle or (self.Type == "Toggle" and self)
         local ToggleLabel = self.TextLabel
-        local Container = self.Container
 
         assert(Info.Default, 'AddKeyPicker: Missing default value.')
 
@@ -1228,14 +1091,8 @@ do
             Mode = Info.Mode or "Toggle",
             Type = 'KeyPicker',
             Callback = Info.Callback or function() end,
-            ChangedCallback = Info.ChangedCallback or function() end,
             SyncToggleState = Info.SyncToggleState or false
         }
-
-        if KeyPicker.SyncToggleState then
-            Info.Modes = {"Toggle"}
-            Info.Mode = "Toggle"
-        end
 
         local PickOuter = Library:Create("Frame", {
             Active = true,
@@ -1255,11 +1112,6 @@ do
             Parent = PickOuter
         })
 
-        Library:AddToRegistry(PickInner, {
-            BackgroundColor3 = "BackgroundColor",
-            BorderColor3 = "OutlineColor"
-        })
-
         local DisplayLabel = Library:CreateLabel({
             Size = UDim2.new(1, 0, 1, 0),
             TextSize = 13,
@@ -1269,47 +1121,66 @@ do
             Parent = PickInner
         })
 
+        local Modes = Info.Modes or {"Always", "Toggle", "Hold"}
+        KeyPicker.Modes = Modes
+        KeyPicker.Mode = table.find(Modes, KeyPicker.Mode) and KeyPicker.Mode or Modes[1]
+
         local ModeSelectOuter = Library:Create("Frame", {
             Active = true,
             Name = 'ModeSelect',
             BorderColor3 = Color3.new(0, 0, 0),
             Position = UDim2.fromOffset(ToggleLabel.AbsolutePosition.X + ToggleLabel.AbsoluteSize.X + 4, ToggleLabel.AbsolutePosition.Y + 1),
-            Size = UDim2.new(0, 60, 0, 45 + 2),
+            Size = UDim2.fromOffset(60, #Modes * 15 + 2),
             Visible = false,
-            ZIndex = 34,
+            ZIndex = 12010,
             Parent = ScreenGui
         })
 
-        local function UpdateModePosition()
-            local Viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+        local function UpdateModePosition(Force)
+            if not ModeSelectOuter.Visible and not Force then
+                return
+            end
+            local Viewport = ScreenGui.AbsoluteSize
+            if Viewport.X <= 0 or Viewport.Y <= 0 then
+                Viewport = Camera.ViewportSize
+            end
+
+            local AnchorPosition = PickOuter.AbsolutePosition
+            local AnchorSize = PickOuter.AbsoluteSize
+            local PopupSize = ModeSelectOuter.AbsoluteSize
             local X, Y
-            if Library:InConfigMenu(ToggleLabel) then
-                X = ToggleLabel.AbsolutePosition.X
-                Y = ToggleLabel.AbsolutePosition.Y + ToggleLabel.AbsoluteSize.Y + 2
-                X = math.min(X, math.max(0, Viewport.X - 64))
-                if Y + 47 > Viewport.Y then
-                    Y = ToggleLabel.AbsolutePosition.Y - 47 - 2
+
+            if ToggleLabel:FindFirstAncestor("ConfigMenu") then
+                X = AnchorPosition.X + AnchorSize.X - PopupSize.X
+                Y = AnchorPosition.Y + AnchorSize.Y + 2
+                if Y + PopupSize.Y > Viewport.Y then
+                    Y = AnchorPosition.Y - PopupSize.Y - 2
                 end
             else
-                X = ToggleLabel.AbsolutePosition.X + ToggleLabel.AbsoluteSize.X + 4
-                Y = ToggleLabel.AbsolutePosition.Y + 1
-                X = math.min(X, math.max(0, Viewport.X - 64))
+                X = AnchorPosition.X + AnchorSize.X + 4
+                Y = AnchorPosition.Y
+                if X + PopupSize.X > Viewport.X then
+                    X = AnchorPosition.X - PopupSize.X - 4
+                end
             end
-            ModeSelectOuter.Position = UDim2.fromOffset(X, math.max(0, Y))
+
+            X = math.clamp(X, 0, math.max(0, Viewport.X - PopupSize.X))
+            Y = math.clamp(Y, 0, math.max(0, Viewport.Y - PopupSize.Y))
+            ModeSelectOuter.Position = UDim2.fromOffset(X, Y)
         end
 
-        ToggleLabel:GetPropertyChangedSignal('AbsolutePosition'):Connect(UpdateModePosition)
+        PickOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(UpdateModePosition)
+        PickOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateModePosition)
+        ScreenGui:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateModePosition)
 
         local ModeSelectInner = Library:Create("Frame", {
             BackgroundColor3 = Library.BackgroundColor,
             BorderColor3 = Library.OutlineColor,
             BorderMode = Enum.BorderMode.Inset,
             Size = UDim2.new(1, 0, 1, 0),
-            ZIndex = 35,
+            ZIndex = 12011,
             Parent = ModeSelectOuter
         })
-
-        Library:AddToRegistry(ModeSelectInner, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
 
         Library:Create('UIListLayout', {
             FillDirection = Enum.FillDirection.Vertical,
@@ -1324,9 +1195,8 @@ do
             Visible = false,
             ZIndex = 110,
             Parent = Library.ActiveKeybindContainer
-        }, true)
+        })
 
-        local Modes = Info.Modes or {"Always", "Toggle", "Hold"}
         local ModeButtons = {}
 
         for Index, Mode in next, Modes do
@@ -1337,11 +1207,13 @@ do
                 Size = UDim2.new(1, 0, 0, 15),
                 TextSize = 13,
                 Text = Mode,
-                ZIndex = 36,
+                LayoutOrder = Index,
+                ZIndex = 12012,
                 Parent = ModeSelectInner
             })
 
-            function ModeButton:Select()
+            function ModeButton:Select(Silent)
+                local Changed = KeyPicker.Mode ~= Mode
                 for _,Button in next, ModeButtons do
                     Button:Deselect()
                 end
@@ -1349,17 +1221,17 @@ do
                 KeyPicker.Mode = Mode
 
                 Label.TextColor3 = Library.AccentColor
-                Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
 
                 ModeSelectOuter.Visible = false
                 Library.OpenedFrames[ModeSelectOuter] = nil
+                if Changed and not Silent then
+                    KeyPicker:DoClick()
+                    KeyPicker:Update()
+                end
             end
 
             function ModeButton:Deselect()
-                KeyPicker.Mode = nil
-
                 Label.TextColor3 = Library.FontColor
-                Library.RegistryMap[Label].Properties.TextColor3 = "FontColor"
             end
 
             Label.InputBegan:Connect(function(Input)
@@ -1367,10 +1239,6 @@ do
                     ModeButton:Select()
                 end
             end)
-
-            if Mode == KeyPicker.Mode then
-                ModeButton:Select()
-            end
 
             ModeButtons[Mode] = ModeButton
         end
@@ -1385,20 +1253,18 @@ do
 
             do
                 local State = KeyPicker:GetState()
-                local ParentOn = KeyPicker.ParentToggle and KeyPicker.ParentToggle.Value and true or false
+                local ParentOn = KeyPicker.ParentToggle and KeyPicker.ParentToggle.Value
 
                 ContainerLabel.Text = string.format('[%s] %s (%s)', GetKeyDisplayName(KeyPicker.Value), Info.Text, KeyPicker.Mode)
 
-                ContainerLabel.Visible = (ParentOn or State) and true or false
+                ContainerLabel.Visible = ParentOn or State
                 ContainerLabel.TextColor3 = State and Library.AccentColor or Library.FontColor
-
-                Library.RegistryMap[ContainerLabel].Properties.TextColor3 = State and "AccentColor" or "FontColor"
 
                 local YSize = 0
                 local XSize = 0
 
                 for _,Label in next, Library.ActiveKeybindContainer:GetChildren() do
-                    if Label:IsA('TextLabel') and Label.Visible then
+                    if Label:IsA("TextLabel") and Label.Visible then
                         YSize += 18
                         if (Label.TextBounds.X > XSize) then
                             XSize = Label.TextBounds.X
@@ -1414,7 +1280,7 @@ do
             if KeyPicker.Mode == "Always" then
                 return true
             elseif KeyPicker.Mode == "Hold" then
-                if KeyPicker.Value == 'None' then
+                if KeyPicker.Value == 'None' or UserInputService:GetFocusedTextBox() then
                     return false
                 end
 
@@ -1445,68 +1311,99 @@ do
                 Mode = KeyPicker.Mode or "Toggle"
             end
 
-            local Changed = Key ~= KeyPicker.Value or Mode ~= KeyPicker.Mode
+            local PreviousMode = KeyPicker.Mode
+            local Changed = Key ~= KeyPicker.Value or Mode ~= PreviousMode
             DisplayLabel.Text = GetKeyDisplayName(Key)
             KeyPicker.Value = Key
-            ModeButtons[Mode]:Select()
+            ModeButtons[Mode]:Select(true)
             if not Silent and Changed then
+                if Mode ~= PreviousMode or Mode == "Hold" then
+                    KeyPicker:DoClick()
+                end
                 Library:SafeCallback(KeyPicker.Callback, Key)
             end
             KeyPicker:Update()
-            Library:UpdateDependencyBoxes()
         end
 
-        function KeyPicker:OnClick(Callback)
-            KeyPicker.Clicked = Callback
-        end
-
-        function KeyPicker:OnChanged(Callback)
-            KeyPicker.Changed = Callback
-            Callback(KeyPicker.Value)
-        end
-
-        if ParentObj.Addons then
-            table.insert(ParentObj.Addons, KeyPicker)
-            KeyPicker.ParentToggle = ParentObj
-        end
-
-        function KeyPicker:DoClick()
-            if ParentObj.Type == "Toggle" and KeyPicker.SyncToggleState then
-                ParentObj:SetValue(not ParentObj.Value)
+        if ParentToggle then
+            table.insert(ParentToggle.Addons, KeyPicker)
+            KeyPicker.ParentToggle = ParentToggle
+            if KeyPicker.SyncToggleState then
+                KeyPicker.Toggled = ParentToggle.Value
             end
-            Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
-            Library:SafeCallback(KeyPicker.Clicked, KeyPicker.Toggled)
+        end
+
+        function KeyPicker:DoClick(State)
+            if State == nil then
+                State = KeyPicker:GetState()
+            end
+            if ParentToggle and KeyPicker.SyncToggleState then
+                ParentToggle:SetValue(State)
+            end
+            Library:SafeCallback(KeyPicker.Callback, State)
         end
 
         local Picking = false
+        local function MatchesKey(Input)
+            return (Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value)
+                or (Input.UserInputType == Enum.UserInputType.MouseButton1 and KeyPicker.Value == "MB1")
+                or (Input.UserInputType == Enum.UserInputType.MouseButton2 and KeyPicker.Value == "MB2")
+        end
 
         PickOuter.InputBegan:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame(PickOuter) then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library.PickingKeyPicker and not Library:MouseIsOverOpenedFrame(PickOuter) then
                 Picking = true
+                Library.PickingKeyPicker = KeyPicker
+                if KeyPicker.Mode == "Hold" then
+                    KeyPicker:DoClick(false)
+                end
 
                 DisplayLabel.Text = ''
 
-                local Break
-                local Text = ''
+                local Break, Event
+                local function StopPicking()
+                    Break = true
+                    Picking = false
+                    task.defer(function()
+                        if Library.PickingKeyPicker == KeyPicker then
+                            Library.PickingKeyPicker = nil
+                        end
+                    end)
+                    if Event then
+                        Event:Disconnect()
+                    end
+                    DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value)
+                end
 
                 task.spawn(function()
+                    local Text, NextUpdate = '', 0
                     while not Break do
-                        if Text == '...' then
-                            Text = ''
+                        if not Library.Toggled or not Library:IsInputActive(PickOuter) then
+                            StopPicking()
+                            return
                         end
-
-                        Text = Text .. '.'
-                        DisplayLabel.Text = Text
-
-                        task.wait(0.4)
+                        local Now = os.clock()
+                        if Now >= NextUpdate then
+                            Text = Text == '...' and '.' or Text .. '.'
+                            DisplayLabel.Text = Text
+                            NextUpdate = Now + 0.4
+                        end
+                        PreRender:Wait()
                     end
                 end)
 
                 task.wait(0.2)
+                if Break then
+                    return
+                end
+                if not Library.Toggled or not Library:IsInputActive(PickOuter) then
+                    StopPicking()
+                    return
+                end
 
-                local Event
                 Event = UserInputService.InputBegan:Connect(function(Input)
-                    if not Library:IsInputActive(PickOuter) then
+                    if not Library.Toggled or not Library:IsInputActive(PickOuter) then
+                        StopPicking()
                         return
                     end
 
@@ -1516,36 +1413,37 @@ do
                         Key = Input.KeyCode.Name
                     elseif Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.MouseButton2 then
                         Key = "None"
+                    else
+                        return
                     end
 
                     if Key == "Escape" then
                         Key = "None"
                     end
 
-                    Break = true
-                    Picking = false
-
-                    DisplayLabel.Text = GetKeyDisplayName(Key)
                     KeyPicker.Value = Key
+                    StopPicking()
+                    if KeyPicker.Mode == "Hold" then
+                        KeyPicker:DoClick()
+                    end
                     Library:SafeCallback(KeyPicker.Callback, Key)
                     KeyPicker:Update()
 
-                    Library:SafeCallback(KeyPicker.ChangedCallback, Key)
-                    Library:SafeCallback(KeyPicker.Changed, Key)
-                    Event:Disconnect()
                 end)
             elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame(PickOuter) then
-                UpdateModePosition()
+                UpdateModePosition(true)
                 ModeSelectOuter.Visible = true
-                Library.OpenedFrames[ModeSelectOuter] = true
+                Library.OpenedFrames[ModeSelectOuter] = PickOuter
             end
         end)
 
         UserInputService.InputBegan:Connect(function(Input)
-            if not Picking then
-                if KeyPicker.Mode == "Toggle" and Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == KeyPicker.Value then
+            if not Library.PickingKeyPicker and not UserInputService:GetFocusedTextBox() and MatchesKey(Input) then
+                if KeyPicker.Mode == "Toggle" then
                     KeyPicker.Toggled = not KeyPicker.Toggled
                     KeyPicker:DoClick()
+                elseif KeyPicker.Mode == "Hold" then
+                    KeyPicker:DoClick(true)
                 end
                 KeyPicker:Update()
             end
@@ -1563,11 +1461,13 @@ do
         end)
 
         UserInputService.InputEnded:Connect(function(Input)
-            if not Picking then
+            if not Picking and KeyPicker.Mode == "Hold" and MatchesKey(Input) then
+                KeyPicker:DoClick(false)
                 KeyPicker:Update()
             end
         end)
 
+        ModeButtons[KeyPicker.Mode]:Select(true)
         KeyPicker:Update()
         Options[Index] = KeyPicker
         KeyPicker.Outer = PickOuter
@@ -1594,11 +1494,6 @@ do
             Size = UDim2.new(1, 0, 1, 0),
             ZIndex = 10,
             Parent = ConfigOuter,
-        })
-
-        Library:AddToRegistry(ConfigInner, {
-            BackgroundColor3 = 'BackgroundColor',
-            BorderColor3 = 'OutlineColor',
         })
 
         local ConfigLabel = Library:CreateLabel({
@@ -1639,6 +1534,8 @@ do
             end
         end)
 
+        local ParentMenu = ConfigOuter:FindFirstAncestor('ConfigMenu')
+        local MenuZIndex = ParentMenu and ParentMenu.ZIndex + 100 or 1001
         local MenuOuter = Library:Create('Frame', {
             Active = true,
             Name = 'ConfigMenu',
@@ -1646,8 +1543,8 @@ do
             BorderColor3 = Color3.new(0, 0, 0),
             Size = UDim2.fromOffset(250, 50),
             Visible = false,
-            ZIndex = 1001,
-            Parent = ScreenGui,
+            ZIndex = MenuZIndex,
+            Parent = ParentMenu or ScreenGui,
         })
 
         local MenuInner = Library:Create('Frame', {
@@ -1656,27 +1553,23 @@ do
             BorderColor3 = Library.OutlineColor,
             BorderMode = Enum.BorderMode.Inset,
             Size = UDim2.new(1, 0, 1, 0),
-            ZIndex = 1002,
+            ZIndex = MenuZIndex + 1,
             Parent = MenuOuter,
         })
 
-        Library:AddToRegistry(MenuInner, {BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor'})
-
-        local AccentBar = Library:Create('Frame', {
+        Library:Create('Frame', {
             BackgroundColor3 = Library.AccentColor,
             BorderSizePixel = 0,
             Size = UDim2.new(1, 0, 0, 2),
-            ZIndex = 1003,
+            ZIndex = MenuZIndex + 2,
             Parent = MenuInner,
         })
-
-        Library:AddToRegistry(AccentBar, {BackgroundColor3 = 'AccentColor'})
 
         local MenuContainer = Library:Create('Frame', {
             BackgroundTransparency = 1,
             Position = UDim2.new(0, 4, 0, 6),
             Size = UDim2.new(1, -8, 1, -10),
-            ZIndex = 1002,
+            ZIndex = MenuZIndex + 1,
             Parent = MenuInner,
         })
 
@@ -1690,10 +1583,10 @@ do
 
         function Menu:Resize()
             MenuOuter.Size = UDim2.fromOffset(250, MenuLayout.AbsoluteContentSize.Y + 10)
-            for _,Descendant in next, MenuContainer:GetDescendants() do
-                if Descendant:IsA('GuiObject') and not Descendant:GetAttribute('ZBoosted') then
-                    Descendant:SetAttribute('ZBoosted', true)
-                    Descendant.ZIndex = Descendant.ZIndex + 1000
+            for _,Descendant in next, MenuContainer:QueryDescendants("GuiObject") do
+                if not Descendant:GetAttribute("ZBoosted") then
+                    Descendant:SetAttribute("ZBoosted", true)
+                    Descendant.ZIndex = Descendant.ZIndex + MenuZIndex - 1
                 end
             end
         end
@@ -1702,22 +1595,28 @@ do
             Menu:Resize()
         end)
 
-        local function UpdateMenuPosition()
+        local function UpdateMenuPosition(Force)
+            if not MenuOuter.Visible and not Force then
+                return
+            end
             local X = ConfigOuter.AbsolutePosition.X + ConfigOuter.AbsoluteSize.X + 4
-            local Viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+            local Viewport = Camera.ViewportSize
             if X + 250 > Viewport.X then
                 X = ConfigOuter.AbsolutePosition.X - 250 - 4
             end
             local Y = math.clamp(ConfigOuter.AbsolutePosition.Y - 4, 10, math.max(10, Viewport.Y - MenuOuter.AbsoluteSize.Y - 10))
-            MenuOuter.Position = UDim2.fromOffset(X, Y)
+            local Origin = ParentMenu and ParentMenu.AbsolutePosition or Vector2.zero
+            MenuOuter.Position = UDim2.fromOffset(X - Origin.X, Y - Origin.Y)
         end
 
         ConfigOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(UpdateMenuPosition)
+        MenuOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdateMenuPosition)
+        Camera:GetPropertyChangedSignal('ViewportSize'):Connect(UpdateMenuPosition)
 
         function Menu:Show()
             local Open = {}
             for Frame in next, Library.OpenedFrames do
-                if Frame.Name == 'ConfigMenu' then
+                if (Frame.Name == 'ConfigMenu' and not ConfigOuter:IsDescendantOf(Frame)) or Frame.Name == 'Color' or Frame.Name == 'Dropdown' or Frame.Name == 'ModeSelect' then
                     Open[#Open + 1] = Frame
                 end
             end
@@ -1739,27 +1638,32 @@ do
                 end)
             end
             Menu:Resize()
-            UpdateMenuPosition()
+            UpdateMenuPosition(true)
             MenuOuter.Visible = true
-            Library.OpenedFrames[MenuOuter] = true
+            Library.OpenedFrames[MenuOuter] = ConfigOuter
             Library.ConfigOverlay.Visible = true
         end
 
         function Menu:Hide()
-            MenuOuter.Visible = false
-            Library.OpenedFrames[MenuOuter] = nil
-            if Library.ConfigOverlay then
-                Library.ConfigOverlay.Visible = false
-            end
             local Open = {}
             for Frame in next, Library.OpenedFrames do
-                if Frame.Name == 'Color' or Frame.Name == 'Dropdown' or Frame.Name == 'ModeSelect' then
+                if Frame == MenuOuter or Frame:IsDescendantOf(MenuOuter) or Frame.Name == 'Color' or Frame.Name == 'Dropdown' or Frame.Name == 'ModeSelect' then
                     Open[#Open + 1] = Frame
                 end
             end
             for _,Frame in ipairs(Open) do
                 Frame.Visible = false
                 Library.OpenedFrames[Frame] = nil
+            end
+            local HasMenu = false
+            for Frame in next, Library.OpenedFrames do
+                if Frame.Name == 'ConfigMenu' then
+                    HasMenu = true
+                    break
+                end
+            end
+            if Library.ConfigOverlay then
+                Library.ConfigOverlay.Visible = HasMenu
             end
         end
 
@@ -1774,6 +1678,11 @@ do
                 and Position.Y >= ButtonPosition.Y and Position.Y <= ButtonPosition.Y + ButtonSize.Y
 
             if ClickedButton then
+                for Frame in next, Library.OpenedFrames do
+                    if Frame.Visible and Library:IsMouseOverFrame(Frame) and not ConfigOuter:IsDescendantOf(Frame) then
+                        return
+                    end
+                end
                 if MenuOuter.Visible then
                     Menu:Hide()
                 else
@@ -1800,7 +1709,7 @@ do
             TitleLayout.VerticalAlignment = Enum.VerticalAlignment.Center
         end
 
-        local TitleProxy = {TextLabel = TitleRow.TextLabel, Container = MenuContainer}
+        local TitleProxy = {TextLabel = TitleRow.TextLabel, Container = MenuContainer, ParentToggle = self}
         setmetatable(TitleProxy, BaseAddons)
 
         function Menu:AddColorPicker(Index, Info)
@@ -1808,12 +1717,10 @@ do
             local DisplayFrame = Picker.DisplayFrame
             local ZOffset = DisplayFrame.Parent.ZIndex + 20 - DisplayFrame.ZIndex
             DisplayFrame.ZIndex += ZOffset
-            DisplayFrame:SetAttribute('ZBoosted', true)
-            for _,Descendant in next, DisplayFrame:GetDescendants() do
-                if Descendant:IsA('GuiObject') then
-                    Descendant.ZIndex += ZOffset
-                    Descendant:SetAttribute('ZBoosted', true)
-                end
+            DisplayFrame:SetAttribute("ZBoosted", true)
+            for _,Descendant in next, DisplayFrame:QueryDescendants("GuiObject") do
+                Descendant.ZIndex += ZOffset
+                Descendant:SetAttribute("ZBoosted", true)
             end
             return Picker
         end
@@ -1822,12 +1729,10 @@ do
             local Picker = TitleProxy:AddKeyPicker(Index, Info)
             local ZOffset = MenuInner.ZIndex + 20 - Picker.Outer.ZIndex
             Picker.Outer.ZIndex += ZOffset
-            Picker.Outer:SetAttribute('ZBoosted', true)
-            for _, Descendant in next, Picker.Outer:GetDescendants() do
-                if Descendant:IsA('GuiObject') then
-                    Descendant.ZIndex += ZOffset
-                    Descendant:SetAttribute('ZBoosted', true)
-                end
+            Picker.Outer:SetAttribute("ZBoosted", true)
+            for _,Descendant in next, Picker.Outer:QueryDescendants("GuiObject") do
+                Descendant.ZIndex += ZOffset
+                Descendant:SetAttribute("ZBoosted", true)
             end
             return Picker
         end
@@ -1857,7 +1762,24 @@ do
         setmetatable(Proxy, Library.BaseGroupbox)
 
         local Dropdown = Proxy:AddDropdown(Index, Info)
-        Library:BoostSubtree(Dropdown.Outer)
+        local ZIndex = ToggleLabel.ZIndex
+        local Parent = ToggleLabel.Parent
+        while Parent and Parent ~= ScreenGui do
+            if Parent:IsA("GuiObject") then
+                ZIndex = math.max(ZIndex, Parent.ZIndex)
+            end
+            Parent = Parent.Parent
+        end
+        local ZOffset = ZIndex + 20 - Dropdown.Outer.ZIndex
+        local function BoostZ(Instance)
+            Instance.ZIndex += ZOffset
+            Instance:SetAttribute("ZBoosted", true)
+        end
+
+        BoostZ(Dropdown.Outer)
+        for _,Descendant in next, Dropdown.Outer:QueryDescendants("GuiObject") do
+            BoostZ(Descendant)
+        end
 
         local ToggleObject = self
         local DropdownResized = false
@@ -1881,9 +1803,6 @@ do
     end
 
     BaseAddons.__index = Funcs
-    BaseAddons.__namecall = function(Table, Key, ...)
-        return Funcs[Key](Table, ...)
-    end
 end
 
 local BaseGroupbox = {}
@@ -1958,12 +1877,11 @@ do
 
     function Funcs:AddButton(...)
         local Button = {}
-        local function ProcessButtonParams(Class, Obj, ...)
+        local function ProcessButtonParams(Obj, ...)
             local Props = select(1, ...)
             if type(Props) == 'table' then
                 Obj.Text = Props.Text
                 Obj.Func = Props.Func
-                Obj.DoubleClick = Props.DoubleClick
                 Obj.Tooltip = Props.Tooltip
             else
                 Obj.Text = select(1, ...)
@@ -1972,7 +1890,7 @@ do
             assert(type(Obj.Func) == 'function', 'AddButton: `Func` callback is missing.')
         end
 
-        ProcessButtonParams('Button', Button, ...)
+        ProcessButtonParams(Button, ...)
 
         local Groupbox = self
         local Container = Groupbox.Container
@@ -2011,67 +1929,13 @@ do
                 Parent = Inner
             })
 
-            Library:AddToRegistry(Outer, {BorderColor3 = "Black"})
-
-            Library:AddToRegistry(Inner, {
-                BackgroundColor3 = "MainColor",
-                BorderColor3 = "OutlineColor",
-            })
-
             Library:OnHighlight(Outer, Outer, {BorderColor3 = "AccentColor"}, {BorderColor3 = "Black"})
             return Outer, Inner, Label
         end
 
         local function InitEvents(Button)
-            local function WaitForEvent(Event, timeout, validator)
-                local Bindable = ns__cloneref(Instance.new('BindableEvent'))
-                local Connection = Event:Once(function(...)
-                    if type(validator) == 'function' and validator(...) then
-                        Bindable:Fire(true)
-                    else
-                        Bindable:Fire(false)
-                    end
-                end)
-                task.delay(timeout, function()
-                    Connection:Disconnect()
-                    Bindable:Fire(false)
-                end)
-                return Bindable.Event:Wait()
-            end
-
-            local function ValidateClick(Input)
-                if Library:MouseIsOverOpenedFrame(Button.Outer) or Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-                    return
-                end
-                return true
-            end
-
             Button.Outer.InputBegan:Connect(function(Input)
-                if not ValidateClick(Input) or Button.Locked then
-                    return
-                end
-
-                if Button.DoubleClick then
-                    Library:RemoveFromRegistry(Button.Label)
-                    Library:AddToRegistry(Button.Label, {TextColor3 = "AccentColor"})
-
-                    Button.Label.TextColor3 = Library.AccentColor
-                    Button.Label.Text = "Are you sure?"
-                    Button.Locked = true
-
-                    local Clicked = WaitForEvent(Button.Outer.InputBegan, 0.5, ValidateClick)
-
-                    Library:RemoveFromRegistry(Button.Label)
-                    Library:AddToRegistry(Button.Label, {TextColor3 = "FontColor"})
-
-                    Button.Label.TextColor3 = Library.FontColor
-                    Button.Label.Text = Button.Text
-                    task.defer(rawset, Button, 'Locked', false)
-
-                    if Clicked then
-                        Library:SafeCallback(Button.Func)
-                    end
-
+                if Library:MouseIsOverOpenedFrame(Button.Outer) or Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
                     return
                 end
 
@@ -2093,7 +1957,7 @@ do
 
         function Button:AddButton(...)
             local SubButton = {}
-            ProcessButtonParams('SubButton', SubButton, ...)
+            ProcessButtonParams(SubButton, ...)
 
             self.Outer.Size = UDim2.new(0.5, -2, 0, 20)
             SubButton.Outer, SubButton.Inner, SubButton.Label = CreateBaseButton(SubButton)
@@ -2139,7 +2003,7 @@ do
             Parent = Container
         })
 
-        local DividerInner = Library:Create("Frame", {
+        Library:Create("Frame", {
             BackgroundColor3 = Library.MainColor,
             BorderColor3 = Library.OutlineColor,
             BorderMode = Enum.BorderMode.Inset,
@@ -2148,185 +2012,12 @@ do
             Parent = DividerOuter
         })
 
-        Library:AddToRegistry(DividerOuter, {BorderColor3 = "Black"})
-        Library:AddToRegistry(DividerInner, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"})
         Groupbox:AddBlank(9)
         Groupbox:Resize()
     end
 
-    function Funcs:AddInput(Index, Info)
-        assert(Info.Text, 'AddInput: Missing `Text` string.')
-
-        local Textbox = {
-            Value = Info.Default or '',
-            Numeric = Info.Numeric or false,
-            Finished = Info.Finished or false,
-            Type = 'Input',
-            Callback = Info.Callback or function(Value) end
-        }
-
-        local Groupbox = self
-        local Container = Groupbox.Container
-
-        Library:CreateLabel({
-            Size = UDim2.new(1, 0, 0, 15),
-            TextSize = 14,
-            Text = Info.Text,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 5,
-            Parent = Container
-        })
-
-        Groupbox:AddBlank(1)
-
-        local TextBoxOuter = Library:Create("Frame", {
-            BackgroundColor3 = Color3.new(0, 0, 0),
-            BorderColor3 = Color3.new(0, 0, 0),
-            Size = UDim2.new(1, -4, 0, 20),
-            ZIndex = 5,
-            Parent = Container
-        })
-
-        local TextBoxInner = Library:Create("Frame", {
-            BackgroundColor3 = Library.MainColor,
-            BorderColor3 = Library.OutlineColor,
-            BorderMode = Enum.BorderMode.Inset,
-            Size = UDim2.new(1, 0, 1, 0),
-            ZIndex = 6,
-            Parent = TextBoxOuter,
-        })
-
-        Library:AddToRegistry(TextBoxInner, {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor",
-        })
-
-        Library:OnHighlight(TextBoxOuter, TextBoxOuter,
-            {BorderColor3 = "AccentColor"},
-            {BorderColor3 = "Black"}
-        )
-
-        if type(Info.Tooltip) == "string" then
-            Library:AddToolTip(Info.Tooltip, TextBoxOuter)
-        end
-
-        Library:Create("UIGradient", {
-            Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, Color3.fromRGB(212, 212, 212))}),
-            Rotation = 90,
-            Parent = TextBoxInner
-        })
-
-        local Container = Library:Create("Frame", {
-            BackgroundTransparency = 1,
-            ClipsDescendants = true,
-
-            Position = UDim2.new(0, 5, 0, 0),
-            Size = UDim2.new(1, -5, 1, 0),
-
-            ZIndex = 7,
-            Parent = TextBoxInner
-        })
-
-        local Box = Library:Create("TextBox", {
-            BackgroundTransparency = 1,
-
-            Position = UDim2.fromOffset(0, 0),
-            Size = UDim2.fromScale(5, 1),
-
-            Font = Library.Font,
-            PlaceholderColor3 = Color3.fromRGB(190, 190, 190),
-            PlaceholderText = Info.Placeholder or '',
-
-            Text = Info.Default or '',
-            TextColor3 = Library.FontColor,
-            TextSize = 14,
-            TextStrokeTransparency = 0,
-            TextXAlignment = Enum.TextXAlignment.Left,
-
-            ZIndex = 7,
-            Parent = Container
-        })
-
-        Library:ApplyTextStroke(Box)
-
-        function Textbox:SetValue(Text)
-            if Info.MaxLength and #Text > Info.MaxLength then
-                Text = Text:sub(1, Info.MaxLength)
-            end
-
-            if Textbox.Numeric then
-                if (not tonumber(Text)) and Text:len() > 0 then
-                    Text = Textbox.Value
-                end
-            end
-
-            Textbox.Value = Text
-            Box.Text = Text
-
-            Library:SafeCallback(Textbox.Callback, Textbox.Value)
-            Library:SafeCallback(Textbox.Changed, Textbox.Value)
-        end
-
-        if Textbox.Finished then
-            Box.FocusLost:Connect(function(Enter)
-                if not Enter then
-                    return
-                end
-
-                Textbox:SetValue(Box.Text)
-            end)
-        else
-            Box:GetPropertyChangedSignal('Text'):Connect(function()
-                Textbox:SetValue(Box.Text)
-            end)
-        end
-
-        local function Update()
-            local PADDING = 2
-            local reveal = Container.AbsoluteSize.X
-
-            if not Box:IsFocused() or Box.TextBounds.X <= reveal - 2 * PADDING then
-                Box.Position = UDim2.new(0, PADDING, 0, 0)
-            else
-                local cursor = Box.CursorPosition
-                if cursor ~= -1 then
-                    local subtext = string.sub(Box.Text, 1, cursor-1)
-                    local width = TextService:GetTextSize(subtext, Box.TextSize, Box.Font, Vector2.new(math.huge, math.huge)).X
-
-                    local currentCursorPos = Box.Position.X.Offset + width
-
-                    if currentCursorPos < PADDING then
-                        Box.Position = UDim2.fromOffset(PADDING-width, 0)
-                    elseif currentCursorPos > reveal - PADDING - 1 then
-                        Box.Position = UDim2.fromOffset(reveal-width-PADDING-1, 0)
-                    end
-                end
-            end
-        end
-
-        task.spawn(Update)
-
-        Box:GetPropertyChangedSignal('Text'):Connect(Update)
-        Box:GetPropertyChangedSignal('CursorPosition'):Connect(Update)
-        Box.FocusLost:Connect(Update)
-        Box.Focused:Connect(Update)
-
-        Library:AddToRegistry(Box, {TextColor3 = "FontColor"})
-
-        function Textbox:OnChanged(Func)
-            Textbox.Changed = Func
-            Func(Textbox.Value)
-        end
-
-        Groupbox:AddBlank(5)
-        Groupbox:Resize()
-
-        Options[Index] = Textbox
-        return Textbox
-    end
-
     function Funcs:AddToggle(Index, Info)
-        assert(Info.Text, 'AddInput: Missing `Text` string.')
+        assert(Info.Text, 'AddToggle: Missing `Text` string.')
 
         local Toggle = {
             Value = Info.Default or false,
@@ -2349,8 +2040,6 @@ do
             Parent = Container
         })
 
-        Library:AddToRegistry(ToggleOuter, {BorderColor3 = "Black"})
-
         local ToggleInner = Library:Create("Frame", {
             BackgroundColor3 = Library.MainColor,
             BorderColor3 = Library.OutlineColor,
@@ -2358,11 +2047,6 @@ do
             Size = UDim2.new(1, 0, 1, 0),
             ZIndex = 6,
             Parent = ToggleOuter
-        })
-
-        Library:AddToRegistry(ToggleInner, {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor"
         })
 
         local ToggleLabel = Library:CreateLabel({
@@ -2396,31 +2080,19 @@ do
             {BorderColor3 = "Black"}
         )
 
-        function Toggle:UpdateColors()
-            Toggle:Display()
-        end
-
         if type(Info.Tooltip) == "string" then
             Library:AddToolTip(Info.Tooltip, ToggleRegion)
         end
 
         function Toggle:Display()
-            TweenGuiProperty(ToggleInner, 'BackgroundColor3', Toggle.Value and Library.AccentColor or Library.MainColor, ToggleTweenInfo)
-            TweenGuiProperty(ToggleInner, 'BorderColor3', Toggle.Value and Library.AccentColorDark or Library.OutlineColor, ToggleTweenInfo)
+            TweenGuiProperty(ToggleInner, "BackgroundColor3", Toggle.Value and Library.AccentColor or Library.MainColor, ToggleTweenInfo)
+            TweenGuiProperty(ToggleInner, "BorderColor3", Toggle.Value and Library.AccentColorDark or Library.OutlineColor, ToggleTweenInfo)
 
-            Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
-            Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or "OutlineColor"
-
-            for _, Addon in next, Toggle.Addons do
+            for _,Addon in next, Toggle.Addons do
                 if Addon.Type == 'KeyPicker' and Addon.Update then
                     Addon:Update()
                 end
             end
-        end
-
-        function Toggle:OnChanged(Func)
-            Toggle.Changed = Func
-            Func(Toggle.Value)
         end
 
         function Toggle:SetValue(Bool, Silent)
@@ -2439,7 +2111,6 @@ do
 
             if not Silent and Changed then
                 Library:SafeCallback(Toggle.Callback, Toggle.Value)
-                Library:SafeCallback(Toggle.Changed, Toggle.Value)
             end
             Library:UpdateDependencyBoxes()
         end
@@ -2451,9 +2122,7 @@ do
         end)
 
         if Toggle.Risky then
-            Library:RemoveFromRegistry(ToggleLabel)
             ToggleLabel.TextColor3 = Library.RiskColor
-            Library:AddToRegistry(ToggleLabel, {TextColor3 = 'RiskColor' })
         end
 
         Toggle:Display()
@@ -2513,8 +2182,6 @@ do
             Parent = Container
         })
 
-        Library:AddToRegistry(SliderOuter, {BorderColor3 = "Black"})
-
         local SliderInner = Library:Create("Frame", {
             Active = true,
             BackgroundColor3 = Library.MainColor,
@@ -2525,22 +2192,12 @@ do
             Parent = SliderOuter
         })
 
-        Library:AddToRegistry(SliderInner, {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor"
-        })
-
         local Fill = Library:Create("Frame", {
             BackgroundColor3 = Library.AccentColor,
             BorderColor3 = Library.AccentColorDark,
             Size = UDim2.new(0, 0, 1, 0),
             ZIndex = 7,
             Parent = SliderInner
-        })
-
-        Library:AddToRegistry(Fill, {
-            BackgroundColor3 = "AccentColor",
-            BorderColor3 = 'AccentColorDark'
         })
 
         local HideBorderRight = Library:Create("Frame", {
@@ -2551,8 +2208,6 @@ do
             ZIndex = 8,
             Parent = Fill
         })
-
-        Library:AddToRegistry(HideBorderRight, {BackgroundColor3 = "AccentColor"})
 
         local DisplayLabel = Library:CreateLabel({
             Size = UDim2.new(1, 0, 1, 0),
@@ -2568,11 +2223,6 @@ do
             Library:AddToolTip(Info.Tooltip, SliderOuter)
         end
 
-        function Slider:UpdateColors()
-            Fill.BackgroundColor3 = Library.AccentColor
-            Fill.BorderColor3 = Library.AccentColorDark
-        end
-
         function Slider:Display()
             local BarWidth = SliderInner.AbsoluteSize.X
             if BarWidth > 0 then
@@ -2584,7 +2234,7 @@ do
             if Info.Compact then
                 DisplayLabel.Text = Info.Text .. ': ' .. Slider.Value .. Suffix
             elseif Info.HideMax then
-                DisplayLabel.Text = string.format('%s', Slider.Value .. Suffix)
+                DisplayLabel.Text = Slider.Value .. Suffix
             else
                 DisplayLabel.Text = string.format('%s/%s', Slider.Value .. Suffix, Slider.Max .. Suffix)
             end
@@ -2597,11 +2247,6 @@ do
             Slider.FillTween:Play()
 
             HideBorderRight.Visible = not (X == Slider.MaxSize or X == 0)
-        end
-
-        function Slider:OnChanged(Func)
-            Slider.Changed = Func
-            Func(Slider.Value)
         end
 
         local function Round(Value)
@@ -2631,27 +2276,20 @@ do
 
             if not Silent and Changed then
                 Library:SafeCallback(Slider.Callback, Slider.Value)
-                Library:SafeCallback(Slider.Changed, Slider.Value)
             end
-            Library:UpdateDependencyBoxes()
         end
 
         SliderInner.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame(SliderInner) then
                 Slider.MaxSize = SliderInner.AbsoluteSize.X
-                local MousePosition = Mouse.X
-                local gPos = Fill.Size.X.Offset
-                local Diff = MousePosition - (Fill.AbsolutePosition.X + gPos)
+                local StartX = Fill.AbsolutePosition.X
 
-                while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-                    local nValue = Slider:GetValueFromXOffset(math.clamp(gPos + (Mouse.X - MousePosition) + Diff, 0, Slider.MaxSize))
-                    local OldValue = Slider.Value
-                    Slider.Value = nValue
-                    Slider:Display()
-
-                    if nValue ~= OldValue then
+                while Library.Toggled and Library:IsInputActive(SliderInner) and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+                    local Value = Slider:GetValueFromXOffset(math.clamp(Mouse.X - StartX, 0, Slider.MaxSize))
+                    if Value ~= Slider.Value then
+                        Slider.Value = Value
+                        Slider:Display()
                         Library:SafeCallback(Slider.Callback, Slider.Value)
-                        Library:SafeCallback(Slider.Changed, Slider.Value)
                     end
 
                     PreRender:Wait()
@@ -2668,14 +2306,6 @@ do
     end
 
     function Funcs:AddDropdown(Index, Info)
-        if Info.SpecialType == 'Player' then
-            Info.Values = GetPlayersString()
-            Info.AllowNull = true
-        elseif Info.SpecialType == 'Team' then
-            Info.Values = GetTeamsString()
-            Info.AllowNull = true
-        end
-
         assert(Info.Values, 'AddDropdown: Missing dropdown value list.')
         assert(Info.AllowNull or Info.Default, 'AddDropdown: Missing default value. Pass `AllowNull` as true if this was intentional.')
 
@@ -2688,14 +2318,11 @@ do
             Value = Info.Multi and {},
             Multi = Info.Multi,
             Type = 'Dropdown',
-            SpecialType = Info.SpecialType,
             Callback = Info.Callback or function(Value) end
         }
 
         local Groupbox = self
         local Container = Groupbox.Container
-
-        local RelativeOffset = 0
 
         if not Info.Compact then
             Library:CreateLabel({
@@ -2711,12 +2338,6 @@ do
             Groupbox:AddBlank(3)
         end
 
-        for _,Element in next, Container:GetChildren() do
-            if Element:IsA('GuiObject') and not Element:IsA('UIListLayout') then
-                RelativeOffset = RelativeOffset + Element.Size.Y.Offset
-            end
-        end
-
         local DropdownOuter = Library:Create("Frame", {
             Active = true,
             BackgroundColor3 = Color3.new(0, 0, 0),
@@ -2726,8 +2347,6 @@ do
             Parent = Info.Parent or Container
         })
 
-        Library:AddToRegistry(DropdownOuter, {BorderColor3 = "Black"})
-
         local DropdownInner = Library:Create("Frame", {
             BackgroundColor3 = Library.MainColor,
             BorderColor3 = Library.OutlineColor,
@@ -2735,11 +2354,6 @@ do
             Size = UDim2.new(1, 0, 1, 0),
             ZIndex = 6,
             Parent = DropdownOuter
-        })
-
-        Library:AddToRegistry(DropdownInner, {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor"
         })
 
         Library:Create("UIGradient", {
@@ -2799,7 +2413,7 @@ do
         local function GetListViewportSize()
             local ViewportSize = ScreenGui.AbsoluteSize
             if ViewportSize.X <= 0 or ViewportSize.Y <= 0 then
-                ViewportSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+                ViewportSize = Camera.ViewportSize
             end
             return ViewportSize
         end
@@ -2811,7 +2425,10 @@ do
             ListOuter.Size = UDim2.fromOffset(Width, Height)
         end
 
-        local function RecalculateListPosition()
+        local function RecalculateListPosition(Force)
+            if not ListOuter.Visible and not Force then
+                return
+            end
             local ViewportSize = GetListViewportSize()
             local AnchorPosition = DropdownOuter.AbsolutePosition
             local AnchorSize = DropdownOuter.AbsoluteSize
@@ -2855,11 +2472,6 @@ do
             Parent = ListOuter
         })
 
-        Library:AddToRegistry(ListInner, {
-            BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor"
-        })
-
         local Scrolling = Library:Create("ScrollingFrame", {
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
@@ -2873,8 +2485,6 @@ do
             ScrollBarImageColor3 = Library.AccentColor,
             ScrollBarImageTransparency = 1
         })
-
-        Library:AddToRegistry(Scrolling, {ScrollBarImageColor3 = "AccentColor"})
 
         Library:Create('UIListLayout', {
             Padding = UDim.new(0, 0),
@@ -2894,7 +2504,7 @@ do
                     end
                 end
 
-                Str = Str:sub(1, #Str - 2)
+                Str = string.sub(Str, 1, #Str - 2)
             else
                 Str = Dropdown.Value or ''
             end
@@ -2902,26 +2512,12 @@ do
             ItemList.Text = (Str == '' and '--' or Str)
         end
 
-        function Dropdown:GetActiveValues()
-            if Info.Multi then
-                local T = {}
-
-                for Value, Bool in next, Dropdown.Value do
-                    table.insert(T, Value)
-                end
-
-                return T
-            else
-                return Dropdown.Value and 1 or 0
-            end
-        end
-
         function Dropdown:BuildDropdownList()
             local Values = Dropdown.Values
             local Buttons = {}
 
             for _,Element in next, Scrolling:GetChildren() do
-                if Element:IsA('GuiObject') and not Element:IsA('UIListLayout') then
+                if Element:IsA('GuiObject') then
                     Element:Destroy()
                 end
             end
@@ -2943,11 +2539,6 @@ do
                     Parent = Scrolling
                 })
 
-                Library:AddToRegistry(Button, {
-                    BackgroundColor3 = "MainColor",
-                    BorderColor3 = "OutlineColor"
-                })
-
                 local ButtonLabel = Library:CreateLabel({
                     Active = false,
                     Size = UDim2.new(1, -6, 1, 0),
@@ -2963,12 +2554,6 @@ do
 
                 local Selected
 
-                if Info.Multi then
-                    Selected = Dropdown.Value[Value]
-                else
-                    Selected = Dropdown.Value == Value
-                end
-
                 function Table:UpdateButton()
                     if Info.Multi then
                         Selected = Dropdown.Value[Value]
@@ -2977,14 +2562,13 @@ do
                     end
 
                     ButtonLabel.TextColor3 = Selected and Library.AccentColor or Library.FontColor
-                    Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and "AccentColor" or "FontColor"
                 end
 
                 Button.InputBegan:Connect(function(Input)
                     if Input.UserInputType == Enum.UserInputType.MouseButton1 then
                         local Try = not Selected
 
-                        if Dropdown:GetActiveValues() ~= 1 or Try or Info.AllowNull then
+                        if Info.Multi or Try or Info.AllowNull then
                             if Info.Multi then
                                 Selected = Try
                                 if Selected then
@@ -3009,17 +2593,18 @@ do
                             Dropdown:Display()
 
                             Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
-                            Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
                             Library:UpdateDependencyBoxes()
+                        elseif Info.CallbackOnSameValue then
+                            Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
                         end
                     end
                 end)
 
                 Table:UpdateButton()
-                Dropdown:Display()
                 Buttons[Button] = Table
             end
 
+            Dropdown:Display()
             ListItemCount = Count
             Scrolling.CanvasSize = UDim2.fromOffset(0, (Count * 20) + 1)
             RecalculateListSize()
@@ -3039,7 +2624,7 @@ do
             end
 
             RecalculateListSize()
-            RecalculateListPosition()
+            RecalculateListPosition(true)
             local TargetSize = ListOuter.Size
             local TargetPosition = ListOuter.Position
             local TargetX, TargetY = TargetPosition.X.Offset, TargetPosition.Y.Offset
@@ -3055,7 +2640,7 @@ do
             ListOuter.Size = UDim2.fromOffset(TargetWidth, 0)
             ListOuter.Position = UDim2.fromOffset(TargetX, IsAboveAnchor and TargetY + TargetHeight or TargetY)
             ListOuter.Visible = true
-            Library.OpenedFrames[ListOuter] = true
+            Library.OpenedFrames[ListOuter] = DropdownOuter
             IsDropdownOpen = true
             DropdownTween = TweenService:Create(ListOuter, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 Size = TargetSize,
@@ -3103,32 +2688,40 @@ do
             TweenGuiProperty(DropdownArrow, 'Rotation', 0)
         end
 
-        function Dropdown:OnChanged(Func)
-            Dropdown.Changed = Func
-            Func(Dropdown.Value)
-        end
+        ListOuter:GetPropertyChangedSignal('Visible'):Connect(function()
+            if not ListOuter.Visible and IsDropdownOpen then
+                IsDropdownOpen = false
+                DropdownAnimationVersion += 1
+                if DropdownTween then
+                    DropdownTween:Cancel()
+                end
+                Library.OpenedFrames[ListOuter] = nil
+                Scrolling.ScrollBarImageTransparency = 1
+                TweenGuiProperty(DropdownArrow, 'Rotation', 0)
+            end
+        end)
 
         function Dropdown:SetValue(Value, Silent)
             local Changed = false
             if Dropdown.Multi then
                 local nTable = {}
 
-                for Index in next, Value do
-                    if table.find(Dropdown.Values, Index) then
+                for Index, Selected in next, Value do
+                    if Selected and table.find(Dropdown.Values, Index) then
                         nTable[Index] = true
                     end
                 end
 
                 local Old = Dropdown.Value or {}
-                for Index in next, nTable do
-                    if not Old[Index] then
+                for _Index in next, nTable do
+                    if not Old[_Index] then
                         Changed = true
                         break
                     end
                 end
                 if not Changed then
-                    for Index in next, Old do
-                        if not nTable[Index] then
+                    for _Index in next, Old do
+                        if not nTable[_Index] then
                             Changed = true
                             break
                         end
@@ -3147,9 +2740,8 @@ do
             end
 
             Dropdown:BuildDropdownList()
-            if not Silent and Changed then
+            if not Silent and (Changed or Info.CallbackOnSameValue) then
                 Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
-                Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
             end
             Library:UpdateDependencyBoxes()
         end
@@ -3172,8 +2764,7 @@ do
             local Position = Input.Position
             local function IsInside(Frame)
                 local FramePosition, FrameSize = Frame.AbsolutePosition, Frame.AbsoluteSize
-                return Position.X >= FramePosition.X and Position.X <= FramePosition.X + FrameSize.X
-                    and Position.Y >= FramePosition.Y and Position.Y <= FramePosition.Y + FrameSize.Y
+                return Position.X >= FramePosition.X and Position.X <= FramePosition.X + FrameSize.X  and Position.Y >= FramePosition.Y and Position.Y <= FramePosition.Y + FrameSize.Y
             end
 
             if not IsInside(DropdownOuter) and not IsInside(ListOuter) then
@@ -3181,36 +2772,16 @@ do
             end
         end)
 
-        Dropdown:BuildDropdownList()
-        Dropdown:Display()
-
-        local Defaults = {}
-
-        if type(Info.Default) == "string" then
-            local Index = table.find(Dropdown.Values, Info.Default)
-            if Index then
-                table.insert(Defaults, Index)
-            end
-        elseif type(Info.Default) == 'table' then
-            for Index in next, Info.Default do
-                table.insert(Defaults, Index)
-            end
-        elseif type(Info.Default) == 'number' and Dropdown.Values[Info.Default] ~= nil then
-            table.insert(Defaults, Info.Default)
+        local Default = Info.Default
+        if type(Default) == "number" then
+            Default = Dropdown.Values[Default]
         end
 
-        for Index in next, Defaults do
-            if Info.Multi then
-                Dropdown.Value[Dropdown.Values[Index]] = true
-            else
-                Dropdown.Value = Dropdown.Values[Index]
-                break
-            end
+        if Info.Multi and type(Default) ~= "table" then
+            Default = Default and {[Default] = true} or {}
         end
 
-        Dropdown:BuildDropdownList()
-        Dropdown:Display()
-
+        Dropdown:SetValue(Default, true)
         Groupbox:AddBlank(Info.BlankSize or 5)
         Groupbox:Resize()
 
@@ -3256,6 +2827,9 @@ do
         end)
 
         Holder:GetPropertyChangedSignal('Visible'):Connect(function()
+            if not Holder.Visible then
+                Library:ClosePopups(Holder)
+            end
             Depbox:Resize()
         end)
 
@@ -3266,11 +2840,7 @@ do
                 local Match = false
 
                 if type(Value) == "table" then
-                    for _,Value in ipairs(Value) do
-                        if Elem.Value == Value then
-                            Match = true break
-                        end
-                    end
+                    Match = table.find(Value, Elem.Value)
                 else
                     Match = (Elem.Value == Value)
                 end
@@ -3284,10 +2854,6 @@ do
 
             Holder.Visible = true
             Depbox:Resize()
-
-            if not Holder.Visible then
-                Library:UpdateDependencyBoxes()
-            end
         end
 
         function Depbox:SetupDependencies(Dependencies)
@@ -3308,793 +2874,7 @@ do
         return Depbox
     end
 
-    function Library:ApplyConfiguration(Data)
-        if type(Data) ~= "table" then
-            return
-        end
-
-        for Flag, Saved in next, Data do
-            if type(Saved) ~= "table" then
-                continue
-            end
-
-            task.defer(function()
-                if Toggles[Flag] and Saved.Type == "Toggle" then
-                    Toggles[Flag]:SetValue(Saved.Value)
-                elseif Options[Flag] then
-                    local Option = Options[Flag]
-                    if Option.Type ~= Saved.Type then
-                        return
-                    end
-
-                    if Saved.Type == "ColorPicker" then
-                        Option:SetValueRGB(Color3.fromHex(Saved.Value), Saved.Transparency)
-                    elseif Saved.Type == "KeyPicker" then
-                        Option:SetValue({Saved.Value, Saved.Mode or "Toggle"})
-                    else
-                        Option:SetValue(Saved.Value)
-                    end
-                end
-            end)
-        end
-    end
-
-    local CommunityConfigsCache = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/CommunityConfigs.luau"))()
-
-    local function IsInactive(Flag)
-        return string.find(string.lower(Flag), "inactive") ~= nil
-    end
-
-    local function WriteLocalConfig(Name, Data)
-        local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Data)
-        if not (Success and Encoded) then
-            Library:Notify("Failed to serialize configuration.", 3)
-            return
-        end
-
-        writefile("NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns", Encoded)
-        return true
-    end
-
-    local function GetAutoloadName()
-        if isfile("NikoletoScripts/PhantomWare/Autoload.ns") then
-            local Name = readfile("NikoletoScripts/PhantomWare/Autoload.ns")
-            if Name and #Name > 0 then
-                return Name
-            end
-        end
-    end
-
-    local function LoadLocalConfig(Name)
-        local Path = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
-        local Content = isfile(Path) and readfile(Path)
-        if not Content then
-            return
-        end
-
-        local Success, Data = pcall(HttpService.JSONDecode, HttpService, Content)
-        if Success and type(Data) == "table" then
-            Library:ApplyConfiguration(Data)
-            Library:Notify("Loaded Configuration Profile: " .. Name, 3)
-        end
-    end
-
-    function Library:BuildConfigsTab(Tab)
-        local TabFrame = Tab.Frame
-        if not TabFrame then
-            return
-        end
-
-        local Holder = Library:Create("Frame", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 8, 0, 8),
-            Size = UDim2.new(1, -16, 1, -16),
-            ClipsDescendants = true,
-            ZIndex = 2,
-            Parent = TabFrame
-        })
-
-        local SelectedView = "Local"
-        local SelectedCategory = "HvH"
-
-        local RefreshLocalRows
-        local PaintAutoloadToggle
-
-        local function MakeButton(Parent, Text, Position, Size, Callback, IsSelected)
-            local Outer = Library:Create("Frame", {
-                BackgroundColor3 = Color3.new(0, 0, 0),
-                BorderColor3 = Color3.new(0, 0, 0),
-                Position = Position,
-                Size = Size,
-                ZIndex = 5,
-                Parent = Parent
-            })
-            local Inner = Library:Create("Frame", {
-                BackgroundColor3 = Library.MainColor,
-                BorderColor3 = Library.OutlineColor,
-                BorderMode = Enum.BorderMode.Inset,
-                Size = UDim2.new(1, 0, 1, 0),
-                ZIndex = 6,
-                Parent = Outer
-            })
-            local Label = Library:CreateLabel({
-                Size = UDim2.new(1, 0, 1, 0),
-                TextSize = 14,
-                Text = Text,
-                ZIndex = 6,
-                Parent = Inner
-            })
-            Library:AddToRegistry(Outer, {BorderColor3 = "Black"})
-            Library:AddToRegistry(Inner, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"})
-            Outer.MouseEnter:Connect(function()
-                if IsSelected and IsSelected() then
-                    return
-                end
-                TweenGuiProperty(Outer, 'BorderColor3', Library.AccentColor)
-            end)
-            Outer.MouseLeave:Connect(function()
-                TweenGuiProperty(Outer, 'BorderColor3', Color3.new(0, 0, 0))
-            end)
-            Outer.InputBegan:Connect(function(Input)
-                if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-                    return
-                end
-                if Library:MouseIsOverOpenedFrame(Outer) then
-                    return
-                end
-                Callback()
-            end)
-            return Outer, Inner, Label
-        end
-
-        local function MakeLabel(Parent, Text, Position, Size, TextSize, Wrap)
-            return Library:CreateLabel({
-                Position = Position,
-                Size = Size,
-                TextSize = TextSize,
-                Text = Text,
-                TextWrapped = Wrap == true,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                ZIndex = 4,
-                Parent = Parent
-            })
-        end
-
-        local function MakeScroll(Parent, Position, Size)
-            local Scroll = Library:Create("ScrollingFrame", {
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                Position = Position,
-                Size = Size,
-                CanvasSize = UDim2.new(0, 0, 0, 0),
-                BottomImage = "",
-                TopImage = "",
-                ScrollBarThickness = 5,
-                ZIndex = 2,
-                Parent = Parent,
-            })
-            local Layout = Library:Create("UIListLayout", {
-                Padding = UDim.new(0, 4),
-                Parent = Scroll
-            })
-            Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-                Scroll.CanvasSize = UDim2.fromOffset(0, Layout.AbsoluteContentSize.Y)
-            end)
-            return Scroll
-        end
-
-        local function ClearChildren(Parent)
-            for _, Child in next, Parent:GetChildren() do
-                if Child:IsA("GuiObject") and not Child:IsA("UIListLayout") then
-                    Child:Destroy()
-                end
-            end
-        end
-
-        local SelectorBar = Library:Create("Frame", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 0, 0, 0),
-            Size = UDim2.new(1, -4, 0, 22),
-            ZIndex = 2,
-            Parent = Holder
-        })
-        local ViewButtons = {}
-        local LocalPanel = Library:Create("Frame", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 0, 0, 28),
-            Size = UDim2.new(1, -4, 1, -36),
-            ZIndex = 2,
-            Parent = Holder
-        })
-        local CommunityPanel = Library:Create("Frame", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 0, 0, 28),
-            Size = UDim2.new(1, -4, 1, -36),
-            ZIndex = 2,
-            Parent = Holder
-        })
-
-        local function UpdateView()
-            LocalPanel.Visible = SelectedView == "Local"
-            CommunityPanel.Visible = SelectedView == "Community"
-            for ViewName, Pair in next, ViewButtons do
-                local Outer, Inner = Pair[1], Pair[2]
-                Outer.BorderColor3 = Color3.new(0, 0, 0)
-                if ViewName == SelectedView then
-                    Inner.BorderColor3 = Library.AccentColor
-                    Library.RegistryMap[Inner].Properties.BorderColor3 = "AccentColor"
-                else
-                    Inner.BorderColor3 = Library.OutlineColor
-                    Library.RegistryMap[Inner].Properties.BorderColor3 = "OutlineColor"
-                end
-            end
-        end
-
-        ViewButtons.Local = {MakeButton(SelectorBar, "Local", UDim2.new(0, 1, 0, 1), UDim2.new(0.5, -3, 1, -2), function()
-            SelectedView = "Local"
-            UpdateView()
-        end, function()
-            return SelectedView == "Local"
-        end)}
-
-        ViewButtons.Community = {MakeButton(SelectorBar, "Community", UDim2.new(0.5, 1, 0, 1), UDim2.new(0.5, -3, 1, -2), function()
-            SelectedView = "Community"
-            UpdateView()
-        end, function()
-            return SelectedView == "Community"
-        end)}
-
-        local LoadedProfile
-        local SelectedLocalName
-        local UpdateSaveButtonState
-        local SaveCurrentConfig
-        local IsSaveLayoutAnimating = false
-        local IsSettingConfigName = false
-
-        local NameBox = Library:Create("TextBox", {
-            BackgroundColor3 = Library.MainColor,
-            BorderColor3 = Library.OutlineColor,
-            Position = UDim2.new(0, 2, 0, 0),
-            Size = UDim2.new(1, -186, 0, 20),
-            Text = "",
-            PlaceholderText = "Config Name",
-            TextColor3 = Color3.new(1, 1, 1),
-            TextSize = 11,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 5,
-            Parent = LocalPanel
-        })
-        Library:AddToRegistry(NameBox, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"})
-
-        local function SetConfigName(Name)
-            IsSettingConfigName = true
-            NameBox.Text = Name
-            IsSettingConfigName = false
-            if UpdateSaveButtonState then
-                UpdateSaveButtonState()
-            end
-        end
-
-        local AutoloadButton, _, AutoloadToggleLabel = MakeButton(LocalPanel, "Set as autoload", UDim2.new(1, -180, 0, 0), UDim2.new(0, 110, 0, 20), function()
-            if not SelectedLocalName then
-                return Library:Notify("Select a config first.", 3)
-            end
-
-            if GetAutoloadName() == SelectedLocalName then
-                if isfile("NikoletoScripts/PhantomWare/Autoload.ns") then
-                    delfile("NikoletoScripts/PhantomWare/Autoload.ns")
-                end
-                Library:Notify("Removed Configuration Profile from Autoload.", 3)
-            else
-                writefile("NikoletoScripts/PhantomWare/Autoload.ns", SelectedLocalName)
-                Library:Notify("Set " .. SelectedLocalName .. " as Autoload.", 3)
-            end
-
-            PaintAutoloadToggle()
-            RefreshLocalRows()
-        end)
-
-        local SaveButton,_,SaveButtonLabel = MakeButton(LocalPanel, "Save", UDim2.new(1, -66, 0, 0), UDim2.new(0, 62, 0, 20), function()
-            if SaveCurrentConfig and not IsSaveLayoutAnimating then
-                SaveCurrentConfig()
-            end
-        end)
-
-        PaintAutoloadToggle = function()
-            if AutoloadToggleLabel then
-                if SelectedLocalName and GetAutoloadName() == SelectedLocalName then
-                    AutoloadToggleLabel.Text = "Remove autoload"
-                else
-                    AutoloadToggleLabel.Text = "Set as autoload"
-                end
-            end
-        end
-
-        local SaveLayoutTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local SaveButtonTween, NameBoxTween, AutoloadButtonTween
-        local IsOverwriteMode = false
-        local SaveModeVersion = 0
-
-        local function ResolveOverwriteName()
-            local Name = NameBox.Text:gsub("^%s*(.-)%s*$", "%1")
-            if #Name <= 0 then
-                return
-            end
-
-            local ConfigPath = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
-            if SelectedLocalName == Name and isfile(ConfigPath) then
-                return SelectedLocalName
-            end
-
-            if isfile(ConfigPath) then
-                return Name
-            end
-        end
-
-        UpdateSaveButtonState = function()
-            local ShouldOverwrite = ResolveOverwriteName() ~= nil
-            if ShouldOverwrite == IsOverwriteMode then
-                return
-            end
-
-            IsOverwriteMode = ShouldOverwrite
-            SaveModeVersion += 1
-            local Version = SaveModeVersion
-            IsSaveLayoutAnimating = true
-            if SaveButtonTween then
-                SaveButtonTween:Cancel()
-            end
-
-            if NameBoxTween then
-                NameBoxTween:Cancel()
-            end
-
-            if AutoloadButtonTween then
-                AutoloadButtonTween:Cancel()
-            end
-
-            SaveButtonLabel.Text = "..."
-
-            SaveButtonTween = TweenService:Create(SaveButton, SaveLayoutTweenInfo, {
-                Position = UDim2.new(1, ShouldOverwrite and -90 or -66, 0, 0),
-                Size = UDim2.new(0, ShouldOverwrite and 86 or 62, 0, 20)
-            })
-            NameBoxTween = TweenService:Create(NameBox, SaveLayoutTweenInfo, {
-                Size = UDim2.new(1, ShouldOverwrite and -210 or -186, 0, 20)
-            })
-            AutoloadButtonTween = TweenService:Create(AutoloadButton, SaveLayoutTweenInfo, {
-                Position = UDim2.new(1, ShouldOverwrite and -204 or -180, 0, 0)
-            })
-            SaveButtonTween.Completed:Connect(function(PlaybackState)
-                if PlaybackState == Enum.PlaybackState.Completed and Version == SaveModeVersion then
-                    SaveButtonLabel.Text = ShouldOverwrite and "Overwrite" or "Save"
-                    IsSaveLayoutAnimating = false
-                end
-            end)
-            SaveButtonTween:Play()
-            NameBoxTween:Play()
-            AutoloadButtonTween:Play()
-        end
-
-        NameBox:GetPropertyChangedSignal("Text"):Connect(function()
-            if not IsSettingConfigName then
-                SelectedLocalName = nil
-            end
-            UpdateSaveButtonState()
-        end)
-
-        SaveCurrentConfig = function()
-            local Name = ResolveOverwriteName() or NameBox.Text:gsub("^%s*(.-)%s*$", "%1")
-            if #Name <= 0 then
-                return Library:Notify("Please enter a config name.", 3)
-            end
-
-            if Name:match("[/\\:*?\"<>|%c]") then
-                return Library:Notify("Config name contains invalid characters.", 3)
-            end
-
-            local Data = {}
-
-            for Flag, Toggle in next, Toggles do
-                if type(Toggle) == "table" and Toggle.Value ~= nil and not IsInactive(Flag) then
-                    Data[Flag] = {Type = "Toggle", Value = Toggle.Value}
-                end
-            end
-
-            for Flag, Option in next, Options do
-                if type(Option) ~= "table" or IsInactive(Flag) then
-                    continue
-                end
-
-                local Type = Option.Type
-                if type(Type) ~= "string" then
-                    continue
-                end
-
-                if Type == "ColorPicker" then
-                    if typeof(Option.Value) == "Color3" then
-                        Data[Flag] = {Type = Type, Value = Option.Value:ToHex(), Transparency = Option.Transparency}
-                    end
-                elseif Type == "KeyPicker" then
-                    if Option.Value ~= nil then
-                        Data[Flag] = {Type = Type, Value = Option.Value, Mode = Option.Mode}
-                    end
-                elseif (Type == "Dropdown" or Type == "Slider" or Type == "Input") and Option.Value ~= nil then
-                    Data[Flag] = {Type = Type, Value = Option.Value}
-                end
-            end
-
-            if WriteLocalConfig(Name, Data) then
-                SetConfigName(Name)
-                UpdateSaveButtonState()
-                Library:Notify((isfile("NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns") and "Overwrote" or "Saved") .. " Configuration Profile: " .. Name, 3)
-                RefreshLocalRows()
-            end
-        end
-
-        local LocalListBox = Library:Create("Frame", {
-            BackgroundColor3 = Library.BackgroundColor,
-            BorderColor3 = Library.OutlineColor,
-            BorderMode = Enum.BorderMode.Inset,
-            Position = UDim2.new(0, 0, 0, 26),
-            Size = UDim2.new(1, 0, 1, -34),
-            ZIndex = 2,
-            Parent = LocalPanel
-        })
-        Library:AddToRegistry(LocalListBox, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-        local LocalRows = MakeScroll(LocalListBox, UDim2.new(0, 8, 0, 8), UDim2.new(1, -16, 1, -16))
-
-        local RenameSourceName
-        local RenamePopup = Library:Create("Frame", {
-            Active = true,
-            Name = "RenameConfigPopup",
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = Library.BackgroundColor,
-            BorderColor3 = Library.OutlineColor,
-            Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(320, 142),
-            Visible = false,
-            ZIndex = 12000,
-            Parent = ScreenGui
-        })
-        Library:AddToRegistry(RenamePopup, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-
-        Library:Create("Frame", {
-            BackgroundColor3 = Library.AccentColor,
-            BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 2),
-            ZIndex = 12001,
-            Parent = RenamePopup
-        })
-
-        local RenameTitle = Library:CreateLabel({
-            Position = UDim2.fromOffset(10, 7),
-            Size = UDim2.new(1, -20, 0, 20),
-            TextSize = 15,
-            Text = "Rename Config",
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 12002,
-            Parent = RenamePopup
-        })
-        local RenameInput = Library:Create("TextBox", {
-            BackgroundColor3 = Library.MainColor,
-            BorderColor3 = Library.OutlineColor,
-            Position = UDim2.fromOffset(10, 35),
-            Size = UDim2.new(1, -20, 0, 26),
-            ClearTextOnFocus = false,
-            PlaceholderText = "New config name",
-            Text = "",
-            TextColor3 = Library.FontColor,
-            TextSize = 13,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 12002,
-            Parent = RenamePopup
-        })
-        Library:AddToRegistry(RenameInput, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor", TextColor3 = "FontColor"})
-
-        local RenameError = Library:CreateLabel({
-            Position = UDim2.fromOffset(10, 63),
-            Size = UDim2.new(1, -20, 0, 16),
-            TextSize = 12,
-            Text = "",
-            TextColor3 = Library.RiskColor,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Visible = false,
-            ZIndex = 12002,
-            Parent = RenamePopup
-        })
-        Library:AddToRegistry(RenameError, {TextColor3 = "RiskColor"})
-
-        local function CloseRenamePopup()
-            RenameInput:ReleaseFocus()
-            RenamePopup.Visible = false
-            Library.OpenedFrames[RenamePopup] = nil
-            RenameSourceName = nil
-        end
-
-        local function OpenRenamePopup(Name)
-            RenameSourceName = Name
-            RenameTitle.Text = "Rename " .. Name
-            RenameInput.Text = ""
-            RenameError.Text = ""
-            RenameError.Visible = false
-            RenamePopup.Visible = true
-            Library.OpenedFrames[RenamePopup] = true
-            RenameInput:CaptureFocus()
-        end
-
-        local function SubmitRename()
-            local OldName = RenameSourceName
-            if not OldName then
-                return
-            end
-
-            local NewName = RenameInput.Text:gsub("^%s*(.-)%s*$", "%1")
-            RenameInput.Text = NewName
-            if #NewName <= 0 then
-                RenameError.Text = "Name must contain at least one character."
-                RenameError.Visible = true
-                RenameInput:CaptureFocus()
-                return
-            end
-            if NewName == OldName then
-                CloseRenamePopup()
-                return
-            end
-            if NewName:match("[/\\:*?\"<>|%c]") then
-                RenameError.Text = "Name contains invalid characters."
-                RenameError.Visible = true
-                RenameInput:CaptureFocus()
-                return
-            end
-
-            local OldPath = "NikoletoScripts/PhantomWare/Configs/" .. OldName .. ".ns"
-            local NewPath = "NikoletoScripts/PhantomWare/Configs/" .. NewName .. ".ns"
-            if isfile(NewPath) then
-                RenameError.Text = "A config with that name already exists."
-                RenameError.Visible = true
-                RenameInput:CaptureFocus()
-                return
-            end
-
-            if not isfile(OldPath) then
-                CloseRenamePopup()
-                RefreshLocalRows()
-                return
-            end
-
-            writefile(NewPath, readfile(OldPath))
-            delfile(OldPath)
-            if GetAutoloadName() == OldName then
-                writefile("NikoletoScripts/PhantomWare/Autoload.ns", NewName)
-            end
-            if LoadedProfile == OldName then
-                LoadedProfile = NewName
-            end
-            if SelectedLocalName == OldName then
-                SelectedLocalName = NewName
-            end
-            if NameBox.Text == OldName then
-                SetConfigName(NewName)
-            end
-
-            CloseRenamePopup()
-            Library:Notify("Renamed config to " .. NewName .. ".", 3)
-            UpdateSaveButtonState()
-            RefreshLocalRows()
-        end
-
-        local RenameButton = Library:Create("TextButton", {
-            Active = true,
-            AutoButtonColor = false,
-            BackgroundColor3 = Library.MainColor,
-            BorderColor3 = Library.OutlineColor,
-            Position = UDim2.new(1, -172, 1, -32),
-            Size = UDim2.fromOffset(78, 22),
-            Text = "Rename",
-            TextColor3 = Library.FontColor,
-            TextSize = 13,
-            Font = Library.Font,
-            ZIndex = 12002,
-            Parent = RenamePopup
-        })
-        Library:AddToRegistry(RenameButton, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor", TextColor3 = "FontColor"})
-        RenameButton.Activated:Connect(SubmitRename)
-
-        local CancelRenameButton = Library:Create("TextButton", {
-            Active = true,
-            AutoButtonColor = false,
-            BackgroundColor3 = Library.MainColor,
-            BorderColor3 = Library.OutlineColor,
-            Position = UDim2.new(1, -88, 1, -32),
-            Size = UDim2.fromOffset(78, 22),
-            Text = "Cancel",
-            TextColor3 = Library.FontColor,
-            TextSize = 13,
-            Font = Library.Font,
-            ZIndex = 12002,
-            Parent = RenamePopup
-        })
-        Library:AddToRegistry(CancelRenameButton, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor", TextColor3 = "FontColor"})
-        CancelRenameButton.Activated:Connect(CloseRenamePopup)
-        RenameInput.FocusLost:Connect(function(EnterPressed)
-            if EnterPressed then
-                SubmitRename()
-            end
-        end)
-
-        RefreshLocalRows = function()
-            ClearChildren(LocalRows)
-            local Names = {}
-            if isfolder("NikoletoScripts/PhantomWare/Configs") then
-                for _, FilePath in next, listfiles("NikoletoScripts/PhantomWare/Configs") do
-                    local FileName = FilePath:match("([^/\\]+)$")
-                    if FileName and FileName:match("%.ns$") then
-                        Names[#Names + 1] = FileName:gsub("%.ns$", "")
-                    end
-                end
-                table.sort(Names)
-            end
-            for _, Name in next, Names do
-                local Row = Library:Create("Frame", {
-                    BackgroundColor3 = Library.BackgroundColor,
-                    BorderColor3 = Library.OutlineColor,
-                    BorderMode = Enum.BorderMode.Inset,
-                    Size = UDim2.new(1, -4, 0, 22),
-                    ZIndex = 3,
-                    Parent = LocalRows
-                })
-                if SelectedLocalName == Name then
-                    Row.BorderColor3 = Library.AccentColor
-                end
-                Row.InputBegan:Connect(function(Input)
-                    if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-                        return
-                    end
-                    if Library:MouseIsOverOpenedFrame(Row) then
-                        return
-                    end
-                    if SelectedLocalName == Name then
-                        SelectedLocalName = nil
-                        SetConfigName("")
-                    else
-                        SelectedLocalName = Name
-                        SetConfigName(Name)
-                    end
-                    UpdateSaveButtonState()
-                    RefreshLocalRows()
-                end)
-                local NameLabel = MakeLabel(Row, Name, UDim2.new(0, 6, 0, 0), UDim2.new(1, -198, 1, 0), 13, false)
-                if LoadedProfile == Name then
-                    NameLabel.TextColor3 = Library.AccentColor
-                end
-
-                MakeButton(Row, "Rename", UDim2.new(1, -192, 0, 1), UDim2.new(0, 60, 0, 18), function()
-                    OpenRenamePopup(Name)
-                end)
-                MakeButton(Row, "Load", UDim2.new(1, -128, 0, 1), UDim2.new(0, 60, 0, 18), function()
-                    LoadLocalConfig(Name)
-                    LoadedProfile = Name
-                    RefreshLocalRows()
-                end)
-                MakeButton(Row, "Delete", UDim2.new(1, -64, 0, 1), UDim2.new(0, 60, 0, 18), function()
-                    local Path = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
-                    if isfile(Path) then
-                        delfile(Path)
-                    end
-
-                    if GetAutoloadName() == Name and isfile("NikoletoScripts/PhantomWare/Autoload.ns") then
-                        delfile("NikoletoScripts/PhantomWare/Autoload.ns")
-                    end
-
-                    if LoadedProfile == Name then
-                        LoadedProfile = nil
-                    end
-
-                    if SelectedLocalName == Name then
-                        SelectedLocalName = nil
-                    end
-
-                    Library:Notify("Deleted Config: " .. Name, 3)
-                    UpdateSaveButtonState()
-                    RefreshLocalRows()
-                end)
-            end
-            PaintAutoloadToggle()
-        end
-
-        local CategoryButtons = {}
-        local CategoryBar = Library:Create("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 22),
-            ZIndex = 2,
-            Parent = CommunityPanel
-        })
-        local CommunityStatus = MakeLabel(CommunityPanel, "Status: fetching...", UDim2.new(0, 0, 0, 24), UDim2.new(1, 0, 0, 16), 13, false)
-        local CommunityRows = MakeScroll(CommunityPanel, UDim2.new(0, 0, 0, 42), UDim2.new(1, 0, 1, -42))
-
-        local function ShowCategory(Category)
-            SelectedCategory = Category
-            for ButtonCategory, Pair in next, CategoryButtons do
-                local Outer, Inner = Pair[1], Pair[2]
-                Outer.BorderColor3 = Color3.new(0, 0, 0)
-                if ButtonCategory == SelectedCategory then
-                    Inner.BorderColor3 = Library.AccentColor
-                    Library.RegistryMap[Inner].Properties.BorderColor3 = "AccentColor"
-                else
-                    Inner.BorderColor3 = Library.OutlineColor
-                    Library.RegistryMap[Inner].Properties.BorderColor3 = "OutlineColor"
-                end
-            end
-            ClearChildren(CommunityRows)
-            local Count = 0
-            for _,Entry in ipairs(CommunityConfigsCache) do
-                if Entry.Category and Entry.Category ~= Category then
-                    continue
-                end
-                Count += 1
-                local Lines = math.clamp(math.ceil(#Entry.Description / 70), 1, 4)
-                local DescHeight = Lines * 14
-                local CardHeight = 66 + DescHeight
-                local Card = Library:Create("Frame", {
-                    BackgroundColor3 = Library.BackgroundColor,
-                    BorderColor3 = Library.OutlineColor,
-                    BorderMode = Enum.BorderMode.Inset,
-                    Size = UDim2.new(1, -4, 0, CardHeight),
-                    ZIndex = 3,
-                    Parent = CommunityRows
-                })
-                Library:AddToRegistry(Card, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-                MakeLabel(Card, Entry.Name, UDim2.new(0, 8, 0, 4), UDim2.new(1, -16, 0, 18), 15, false)
-                MakeLabel(Card, "by " .. Entry.Author .. " • v" .. Entry.Version, UDim2.new(0, 8, 0, 22), UDim2.new(1, -16, 0, 14), 13, false)
-                MakeLabel(Card, Entry.Description, UDim2.new(0, 8, 0, 36), UDim2.new(1, -16, 0, DescHeight), 13, true)
-                MakeButton(Card, "Load", UDim2.new(0, 8, 1, -26), UDim2.new(0.5, -12, 0, 20), function()
-                    Library:ApplyConfiguration(HttpService:JSONDecode(Entry.Configuration))
-                    Library:Notify("Loaded community config: " .. Entry.Name, 3)
-                end)
-                MakeButton(Card, "Import", UDim2.new(0.5, 4, 1, -26), UDim2.new(0.5, -12, 0, 20), function()
-                    if WriteLocalConfig(Entry.Name, HttpService:JSONDecode(Entry.Configuration)) then
-                        Library:Notify("Imported Config: " .. Entry.Name, 3)
-                        RefreshLocalRows()
-                    end
-                end)
-            end
-            CommunityStatus.Text = "Status: " .. Count .. " config(s) in " .. Category
-        end
-
-        for Index, Category in ipairs({"HvH", "Rage", "Legit"}) do
-            local Outer, Inner = MakeButton(CategoryBar, Category, UDim2.new((Index - 1) * 0.25, 2, 0, 1), UDim2.new(0.25, -4, 1, -2), function()
-                ShowCategory(Category)
-            end, function()
-                return SelectedCategory == Category
-            end)
-            CategoryButtons[Category] = {Outer, Inner}
-        end
-        MakeButton(CategoryBar, "Refresh", UDim2.new(0.75, 2, 0, 1), UDim2.new(0.25, -4, 1, -2), function()
-            CommunityConfigsCache = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/CommunityConfigs.luau"))()
-            ShowCategory(SelectedCategory)
-            Library:Notify("Community configs refreshed.", 3)
-        end)
-
-        RefreshLocalRows()
-        ShowCategory(SelectedCategory)
-        UpdateView()
-
-        task.defer(function()
-            local Autoload = GetAutoloadName()
-            if Autoload and Autoload ~= "" then
-                LoadLocalConfig(Autoload)
-                LoadedProfile = Autoload
-                Library:Notify("Profile '" .. Autoload .. "' was loaded successfully.", 3)
-                RefreshLocalRows()
-            end
-        end)
-    end
-
     BaseGroupbox.__index = Funcs
-    BaseGroupbox.__namecall = function(Table, Key, ...)
-        return Funcs[Key](Table, ...)
-    end
 
     Library.BaseGroupbox = BaseGroupbox
 end
@@ -4134,8 +2914,6 @@ do
         Parent = WatermarkOuter
     })
 
-    Library:AddToRegistry(WatermarkInner, {BorderColor3 = "AccentColor"})
-
     local InnerFrame = Library:Create("Frame", {
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
@@ -4145,19 +2923,10 @@ do
         Parent = WatermarkInner
     })
 
-    local Gradient = Library:Create("UIGradient", {
+    Library:Create("UIGradient", {
         Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)), ColorSequenceKeypoint.new(1, Library.MainColor)}),
         Rotation = -90,
         Parent = InnerFrame
-    })
-
-    Library:AddToRegistry(Gradient, {
-        Color = function()
-            return ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)),
-                ColorSequenceKeypoint.new(1, Library.MainColor),
-            })
-        end
     })
 
     local WatermarkLabel = Library:CreateLabel({
@@ -4193,9 +2962,7 @@ do
         Parent = KeybindOuter,
     })
 
-    Library:AddToRegistry(KeybindInner, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"}, true)
-
-    local ColorFrame = Library:Create("Frame", {
+    Library:Create("Frame", {
         BackgroundColor3 = Library.AccentColor,
         BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 0, 2),
@@ -4203,13 +2970,11 @@ do
         Parent = KeybindInner
     })
 
-    Library:AddToRegistry(ColorFrame, {BackgroundColor3 = "AccentColor"}, true)
-
     Library:CreateLabel({
         Size = UDim2.new(1, 0, 0, 20),
         Position = UDim2.fromOffset(5, 2),
         TextXAlignment = Enum.TextXAlignment.Left,
-        Text = 'Active Keybind List',
+        Text = "Active Keybind List",
         ZIndex = 104,
         Parent = KeybindInner
     })
@@ -4257,6 +3022,7 @@ function Library:UpdateWatermark()
         return
     end
     Library.WatermarkState.Frames += 1
+
     local Now = os.clock()
     if Now - Library.WatermarkState.LastUpdate >= 0.3 then
         local FPS = math.floor(Library.WatermarkState.Frames / (Now - Library.WatermarkState.LastUpdate))
@@ -4288,8 +3054,6 @@ function Library:Notify(Text, Time)
         Parent = NotifyOuter
     })
 
-    Library:AddToRegistry(NotifyInner, {BackgroundColor3 = "MainColor", BorderColor3 = "OutlineColor"}, true)
-
     local InnerFrame = Library:Create("Frame", {
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
@@ -4299,15 +3063,11 @@ function Library:Notify(Text, Time)
         Parent = NotifyInner
     })
 
-    local Gradient = Library:Create("UIGradient", {
+    Library:Create("UIGradient", {
         Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)), ColorSequenceKeypoint.new(1, Library.MainColor)}),
         Rotation = -90,
         Parent = InnerFrame
     })
-
-    Library:AddToRegistry(Gradient, {Color = function()
-        return ColorSequence.new({ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)),  ColorSequenceKeypoint.new(1, Library.MainColor)})
-    end})
 
     Library:CreateLabel({
         Position = UDim2.new(0, 4, 0, 0),
@@ -4319,7 +3079,7 @@ function Library:Notify(Text, Time)
         Parent = InnerFrame
     })
 
-    local LeftColor = Library:Create("Frame", {
+    Library:Create("Frame", {
         BackgroundColor3 = Library.AccentColor,
         BorderSizePixel = 0,
         Position = UDim2.new(0, -1, 0, -1),
@@ -4328,7 +3088,6 @@ function Library:Notify(Text, Time)
         Parent = NotifyOuter
     })
 
-    Library:AddToRegistry(LeftColor, {BackgroundColor3 = "AccentColor"}, true)
     pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize + 8 + 4, 0, YSize), 'Out', 'Quad', 0.4, true)
     task.spawn(function()
         task.wait(Time or 5)
@@ -4338,447 +3097,383 @@ function Library:Notify(Text, Time)
     end)
 end
 
-function Library:CreateWindow(Configuration)
-    if typeof(Configuration.Position) ~= 'UDim2' then
-        Configuration.Position = UDim2.fromOffset(175, 50)
+local ConfigKeys = {None = true, MB1 = true, MB2 = true}
+for _,Key in ipairs(Enum.KeyCode:GetEnumItems()) do
+    ConfigKeys[Key.Name] = true
+end
+
+local function ValidateConfig(Data)
+    if type(Data) ~= "table" then
+        return false, "Invalid configuration data."
     end
 
-    if typeof(Configuration.Size) ~= 'UDim2' then
-        Configuration.Size = UDim2.fromOffset(550, 600)
+    for Flag, Saved in next, Data do
+        if type(Flag) ~= "string" or type(Saved) ~= "table" or type(Saved.Type) ~= "string" or Saved.Value == nil then
+            return false, "Invalid config entry: " .. tostring(Flag)
+        end
+
+        local Option = Toggles[Flag] or Options[Flag]
+        if not Option then
+            continue
+        end
+
+        local Type, Value = Saved.Type, Saved.Value
+        local Valid = Type == Option.Type
+        if Valid then
+            if Type == "Toggle" then
+                Valid = type(Value) == "boolean"
+            elseif Type == "Slider" then
+                Valid = type(Value) == "number" and math.abs(Value) < math.huge
+            elseif Type == "Dropdown" then
+                if Option.Multi then
+                    Valid = type(Value) == "table"
+                    if Valid then
+                        if Flag == "ESPVisuals_HeadTagStaticElements" then
+                            Value.Stance = nil
+                            Value.Ammo = nil
+                        elseif Flag == "ESPVisuals_HeadTagStatusElements" then
+                            Value.Grenade = nil
+                            Value.Reloading = nil
+                        end
+                        for Name, Selected in next, Value do
+                            if type(Selected) ~= "boolean" or not table.find(Option.Values, Name) then
+                                Valid = false
+                                break
+                            end
+                        end
+                    end
+                else
+                    Valid = table.find(Option.Values, Value)
+                end
+            elseif Type == "KeyPicker" then
+                Valid = type(Value) == "string" and ConfigKeys[Value]
+                    and (Saved.Mode == nil or table.find(Option.Modes, Saved.Mode))
+            elseif Type == "ColorPicker" then
+                Valid = type(Value) == "string" and string.match(Value, "^%x%x%x%x%x%x$")
+                    and (Saved.Transparency == nil or (type(Saved.Transparency) == "number" and Saved.Transparency >= 0 and Saved.Transparency <= 1))
+            else
+                Valid = false
+            end
+        end
+
+        if not Valid then
+            return false, "Invalid config value: " .. Flag
+        end
     end
 
-    Configuration.AnchorPoint = Vector2.new(0.5, 0.5)
-    Configuration.Position = UDim2.fromScale(0.5, 0.5)
+    return true
+end
 
-    local Window = {Tabs = {}}
-
-    local InputShield = Library:Create("Frame", {
-        Name = "WindowInputShield",
-        Active = true,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Visible = false,
-        ZIndex = 0,
-        Parent = ScreenGui
-    })
-    pcall(function()
-        InputShield.InputSink = Enum.InputSink.All
-    end)
-
-    local Outer = Library:Create("Frame", {
-        AnchorPoint = Configuration.AnchorPoint,
-        BackgroundColor3 = Color3.new(0, 0, 0),
-        BorderSizePixel = 0,
-        Position = Configuration.Position,
-        Size = Configuration.Size,
-        Visible = false,
-        ZIndex = 1,
-        Parent = ScreenGui
-    })
-
-    Library:Create("UICorner", {
-        CornerRadius = UDim.new(0, 3),
-        Parent = Outer,
-    })
-
-    Library:MakeDraggable(Outer, 25)
-
-    local Inner = Library:Create("Frame", {
-        BackgroundColor3 = Library.MainColor,
-        BorderSizePixel = 0,
-        Position = UDim2.new(0, 1, 0, 1),
-        Size = UDim2.new(1, -2, 1, -2),
-        ZIndex = 1,
-        Parent = Outer
-    })
-
-    Library:AddToRegistry(Inner, {BackgroundColor3 = "MainColor"})
-
-    local InnerStroke = Library:Create("UIStroke", {
-        Color = Library.AccentColor,
-        Thickness = 1,
-        Parent = Inner,
-    })
-
-    Library:AddToRegistry(InnerStroke, {Color = "AccentColor"})
-
-    local WindowLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 7, 0, 0),
-        Size = UDim2.new(0, 0, 0, 25),
-        Text = Configuration.Title or '',
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 1,
-        Parent = Inner
-    })
-
-    local MainSectionOuter = Library:Create("Frame", {
-        BackgroundColor3 = Library.BackgroundColor,
-        BorderColor3 = Library.OutlineColor,
-        Position = UDim2.new(0, 8, 0, 25),
-        Size = UDim2.new(1, -16, 1, -33),
-        ZIndex = 1,
-        Parent = Inner
-    })
-
-    Library:AddToRegistry(MainSectionOuter, {BackgroundColor3 = "BackgroundColor",  BorderColor3 = "OutlineColor"})
-
-    local MainSectionInner = Library:Create("Frame", {
-        BackgroundColor3 = Library.BackgroundColor,
-        BorderColor3 = Color3.new(0, 0, 0),
-        BorderMode = Enum.BorderMode.Inset,
-        Position = UDim2.new(0, 0, 0, 0),
-        Size = UDim2.new(1, 0, 1, 0),
-        ZIndex = 1,
-        Parent = MainSectionOuter
-    })
-
-    Library:AddToRegistry(MainSectionInner, {BackgroundColor3 = "BackgroundColor"})
-
-    local TabArea = Library:Create("Frame", {
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 8, 0, 8),
-        Size = UDim2.new(1, -16, 0, 21),
-        ZIndex = 1,
-        Parent = MainSectionInner
-    })
-
-    local TabListLayout = Library:Create('UIListLayout', {
-        Padding = UDim.new(0, Configuration.TabPadding),
-        FillDirection = Enum.FillDirection.Horizontal,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Parent = TabArea
-    })
-
-    local TabContainer = Library:Create("Frame", {
-        BackgroundColor3 = Library.MainColor,
-        BorderColor3 = Library.OutlineColor,
-        Position = UDim2.new(0, 8, 0, 30),
-        Size = UDim2.new(1, -16, 1, -38),
-        ZIndex = 2,
-        Parent = MainSectionInner
-    })
-    
-
-    Library:AddToRegistry(TabContainer, {BackgroundColor3 = "MainColor",  BorderColor3 = "OutlineColor"})
-
-    function Window:SetWindowTitle(Title)
-        WindowLabel.Text = Title
+function Library:ApplyConfiguration(Data)
+    local Valid, Error = ValidateConfig(Data)
+    if not Valid then
+        Library:Notify(Error, 3)
+        return
     end
 
-    function Window:AddTab(Name)
-        local Tab = {Groupboxes = {},  Tabboxes = {}}
-        local TabButtonWidth = Library:GetTextBounds(Name, Library.Font, 16)
+    for Flag, Saved in next, Data do
+        local Option = Toggles[Flag] or Options[Flag]
+        if not Option then
+            continue
+        end
+        if Saved.Type == "ColorPicker" then
+            Option:SetValueRGB(Color3.fromHex(Saved.Value), Saved.Transparency)
+        elseif Saved.Type == "KeyPicker" then
+            Option:SetValue({Saved.Value, Saved.Mode or Option.Mode})
+        else
+            Option:SetValue(Saved.Value)
+        end
+    end
 
-        local TabButton = Library:Create("Frame", {
-            Active = true,
-            BackgroundColor3 = Library.BackgroundColor,
-            BorderColor3 = Library.OutlineColor,
-            Size = UDim2.new(0, TabButtonWidth + 8 + 4, 1, 0),
+    for _,Option in next, Options do
+        if Option.Type == "KeyPicker" and Option.SyncToggleState and Option.Mode ~= "Toggle" then
+            Option:DoClick()
+        end
+    end
+
+    return true
+end
+
+local function WriteLocalConfig(Name, Data)
+    local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Data)
+    if not Success then
+        Library:Notify("Failed to serialize configuration.", 3)
+        return
+    end
+
+    writefile("NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns", Encoded)
+    return true
+end
+
+local function GetAutoload()
+    if isfile("NikoletoScripts/PhantomWare/Autoload.ns") then
+        local Name = readfile("NikoletoScripts/PhantomWare/Autoload.ns")
+        if #Name > 0 then
+            return Name
+        end
+    end
+end
+
+local function LoadLocalConfig(Name)
+    local Path = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
+    local Content = isfile(Path) and readfile(Path)
+    if not Content then
+        Library:Notify("Config no longer exists.", 3)
+        return
+    end
+
+    local Success, Data = pcall(HttpService.JSONDecode, HttpService, Content)
+    if not Success or type(Data) ~= "table" then
+        Library:Notify("Invalid Configuration Profile: " .. Name, 3)
+        return
+    end
+
+    if not Library:ApplyConfiguration(Data) then
+        return
+    end
+    Library:Notify("Loaded Configuration Profile: " .. Name, 3)
+    return true
+end
+
+function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName)
+    local AimingTab, VisualsTab, MiscellaneousTab, SettingsTab, ConfigsTab = (function()
+        local ActiveTab
+        local Outer = Library:Create("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(550, 600),
+            Visible = false,
             ZIndex = 1,
-            Parent = TabArea
+            Parent = ScreenGui
         })
 
-        Library:AddToRegistry(TabButton, {
-            BackgroundColor3 = "BackgroundColor",
-            BorderColor3 = "OutlineColor"
+        Library:Create("UICorner", {
+            CornerRadius = UDim.new(0, 3),
+            Parent = Outer,
+        })
+
+        Library:MakeDraggable(Outer, 25)
+
+        local Inner = Library:Create("Frame", {
+            BackgroundColor3 = Library.MainColor,
+            BorderSizePixel = 0,
+            Position = UDim2.new(0, 1, 0, 1),
+            Size = UDim2.new(1, -2, 1, -2),
+            ZIndex = 1,
+            Parent = Outer
+        })
+
+        Library:Create("UIStroke", {
+            Color = Library.AccentColor,
+            Thickness = 1,
+            Parent = Inner,
         })
 
         Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 0),
-            Size = UDim2.new(1, 0, 1, -1),
-            Text = Name,
+            Position = UDim2.new(0, 7, 0, 0),
+            Size = UDim2.new(0, 0, 0, 25),
+            Text = "PhantomWare | discord.gg/DsGCKtxxEN" .. (ExecutorName and (" | " .. ExecutorName) or ""),
+            TextXAlignment = Enum.TextXAlignment.Left,
             ZIndex = 1,
-            Parent = TabButton
+            Parent = Inner
         })
 
-        local Blocker = Library:Create("Frame", {
-            BackgroundColor3 = Library.MainColor,
-            BorderSizePixel = 0,
-            Position = UDim2.new(0, 0, 1, 0),
-            Size = UDim2.new(1, 0, 0, 1),
-            BackgroundTransparency = 1,
-            ZIndex = 3,
-            Parent = TabButton
+        local MainSectionOuter = Library:Create("Frame", {
+            BackgroundColor3 = Library.BackgroundColor,
+            BorderColor3 = Library.OutlineColor,
+            Position = UDim2.new(0, 8, 0, 25),
+            Size = UDim2.new(1, -16, 1, -33),
+            ZIndex = 1,
+            Parent = Inner
         })
 
-        Library:AddToRegistry(Blocker, {BackgroundColor3 = "MainColor"})
-
-        local TabFrame = Library:Create("Frame", {
-            Name = 'TabFrame',
-            BackgroundTransparency = 1,
+        local MainSectionInner = Library:Create("Frame", {
+            BackgroundColor3 = Library.BackgroundColor,
+            BorderColor3 = Color3.new(0, 0, 0),
+            BorderMode = Enum.BorderMode.Inset,
             Position = UDim2.new(0, 0, 0, 0),
             Size = UDim2.new(1, 0, 1, 0),
-            Visible = false,
-            ZIndex = 2,
-            Parent = TabContainer
+            ZIndex = 1,
+            Parent = MainSectionOuter
         })
 
-        local LeftSide = Library:Create("ScrollingFrame", {
+        local TabArea = Library:Create("Frame", {
             BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            Position = UDim2.new(0, 8 - 1, 0, 8 - 1),
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2),
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            BottomImage = '',
-            TopImage = '',
-            ScrollBarThickness = 0,
-            ZIndex = 2,
-            Parent = TabFrame
-        })
-
-        local RightSide = Library:Create("ScrollingFrame", {
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1),
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2),
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            BottomImage = '',
-            TopImage = '',
-            ScrollBarThickness = 0,
-            ZIndex = 2,
-            Parent = TabFrame
+            Position = UDim2.new(0, 8, 0, 8),
+            Size = UDim2.new(1, -16, 0, 21),
+            ZIndex = 1,
+            Parent = MainSectionInner
         })
 
         Library:Create('UIListLayout', {
             Padding = UDim.new(0, 8),
-            FillDirection = Enum.FillDirection.Vertical,
+            FillDirection = Enum.FillDirection.Horizontal,
             SortOrder = Enum.SortOrder.LayoutOrder,
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            Parent = LeftSide
+            Parent = TabArea
         })
 
-        Library:Create('UIListLayout', {
-            Padding = UDim.new(0, 8),
-            FillDirection = Enum.FillDirection.Vertical,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            Parent = RightSide
+        local TabContainer = Library:Create("Frame", {
+            BackgroundColor3 = Library.MainColor,
+            BorderColor3 = Library.OutlineColor,
+            Position = UDim2.new(0, 8, 0, 30),
+            Size = UDim2.new(1, -16, 1, -38),
+            ZIndex = 2,
+            Parent = MainSectionInner
         })
 
-        for _,Side in next, {LeftSide, RightSide } do
-            Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-                Side.CanvasSize = UDim2.fromOffset(0, Side.UIListLayout.AbsoluteContentSize.Y)
-            end)
-        end
+        local function AddTab(Name)
+            local Tab = {}
+            local TabButtonWidth = Library:GetTextBounds(Name, Library.Font, 16)
 
-        function Tab:ShowTab()
-            local OpenFrames = {}
-            for Frame in next, Library.OpenedFrames do
-                OpenFrames[#OpenFrames + 1] = Frame
-            end
-            for _, Frame in ipairs(OpenFrames) do
-                Frame.Visible = false
-                Library.OpenedFrames[Frame] = nil
-            end
-            if Library.ConfigOverlay then
-                Library.ConfigOverlay.Visible = false
-            end
-
-            for _,Tab in next, Window.Tabs do
-                Tab:HideTab()
-            end
-
-            Blocker.BackgroundTransparency = 0
-            TabButton.BackgroundColor3 = Library.MainColor
-            Library.RegistryMap[TabButton].Properties.BackgroundColor3 = "MainColor"
-            TabFrame.Visible = true
-        end
-
-        function Tab:HideTab()
-            Blocker.BackgroundTransparency = 1
-            TabButton.BackgroundColor3 = Library.BackgroundColor
-            Library.RegistryMap[TabButton].Properties.BackgroundColor3 = "BackgroundColor"
-            TabFrame.Visible = false
-        end
-
-        function Tab:SetLayoutOrder(Position)
-            TabButton.LayoutOrder = Position
-            TabListLayout:ApplyLayout()
-        end
-
-        function Tab:AddGroupbox(Info)
-            local Groupbox = {}
-
-            local BoxOuter = Library:Create("Frame", {
+            local TabButton = Library:Create("Frame", {
+                Active = true,
                 BackgroundColor3 = Library.BackgroundColor,
                 BorderColor3 = Library.OutlineColor,
-                BorderMode = Enum.BorderMode.Inset,
-                Size = UDim2.new(1, 0, 0, 507 + 2),
-                ZIndex = 2,
-                Parent = Info.Side == 1 and LeftSide or RightSide
+                Size = UDim2.new(0, TabButtonWidth + 8 + 4, 1, 0),
+                ZIndex = 1,
+                Parent = TabArea
             })
-
-            Library:AddToRegistry(BoxOuter, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-
-            local BoxInner = Library:Create("Frame", {
-                BackgroundColor3 = Library.BackgroundColor,
-                BorderColor3 = Color3.new(0, 0, 0),
-                Size = UDim2.new(1, -2, 1, -2),
-                Position = UDim2.new(0, 1, 0, 1),
-                ZIndex = 4,
-                Parent = BoxOuter
-            })
-
-            Library:AddToRegistry(BoxInner, {BackgroundColor3 = "BackgroundColor"})
-
-            local Highlight = Library:Create("Frame", {
-                BackgroundColor3 = Library.AccentColor,
-                BorderSizePixel = 0,
-                Size = UDim2.new(1, 0, 0, 2),
-                ZIndex = 5,
-                Parent = BoxInner
-            })
-
-            Library:AddToRegistry(Highlight, {BackgroundColor3 = "AccentColor"})
 
             Library:CreateLabel({
-                Size = UDim2.new(1, 0, 0, 18),
-                Position = UDim2.new(0, 4, 0, 2),
-                TextSize = 14,
-                Text = Info.Name,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                ZIndex = 5,
-                Parent = BoxInner
-            })
-
-            local Container = Library:Create("Frame", {
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 4, 0, 20),
-                Size = UDim2.new(1, -4, 1, -20),
+                Position = UDim2.new(0, 0, 0, 0),
+                Size = UDim2.new(1, 0, 1, -1),
+                Text = Name,
                 ZIndex = 1,
-                Parent = BoxInner
+                Parent = TabButton
             })
 
-            Library:Create('UIListLayout', {
-                FillDirection = Enum.FillDirection.Vertical,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-                Parent = Container
+            local Blocker = Library:Create("Frame", {
+                BackgroundColor3 = Library.MainColor,
+                BorderSizePixel = 0,
+                Position = UDim2.new(0, 0, 1, 0),
+                Size = UDim2.new(1, 0, 0, 1),
+                Visible = false,
+                ZIndex = 3,
+                Parent = TabButton
             })
 
-            function Groupbox:Resize()
-                local Size = 0
+            local TabFrame = Library:Create("Frame", {
+                Name = 'TabFrame',
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 0, 0, 0),
+                Size = UDim2.new(1, 0, 1, 0),
+                Visible = false,
+                ZIndex = 2,
+                Parent = TabContainer
+            })
 
-                for _,Element in next, Groupbox.Container:GetChildren() do
-                    if Element:IsA('GuiObject') and (not Element:IsA('UIListLayout')) and Element.Visible then
-                        Size = Size + Element.Size.Y.Offset
-                    end
-                end
+            local LeftSide = Library:Create("ScrollingFrame", {
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2.new(0, 8 - 1, 0, 8 - 1),
+                Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2),
+                CanvasSize = UDim2.new(0, 0, 0, 0),
+                BottomImage = '',
+                TopImage = '',
+                ScrollBarThickness = 0,
+                ZIndex = 2,
+                Parent = TabFrame
+            })
 
-                BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2)
+            local RightSide = Library:Create("ScrollingFrame", {
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1),
+                Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2),
+                CanvasSize = UDim2.new(0, 0, 0, 0),
+                BottomImage = '',
+                TopImage = '',
+                ScrollBarThickness = 0,
+                ZIndex = 2,
+                Parent = TabFrame
+            })
+
+            for _,Side in next, {LeftSide, RightSide} do
+                local Layout = Library:Create('UIListLayout', {
+                    Padding = UDim.new(0, 8),
+                    FillDirection = Enum.FillDirection.Vertical,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                    Parent = Side
+                })
+                Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+                    Side.CanvasSize = UDim2.fromOffset(0, Layout.AbsoluteContentSize.Y)
+                end)
             end
 
-            Groupbox.Container = Container
-            setmetatable(Groupbox, BaseGroupbox)
+            function Tab:ShowTab()
+                for Frame in next, Library.OpenedFrames do
+                    Frame.Visible = false
+                    Library.OpenedFrames[Frame] = nil
+                end
 
-            Groupbox:AddBlank(3)
-            Groupbox:Resize()
+                if Library.ConfigOverlay then
+                    Library.ConfigOverlay.Visible = false
+                end
 
-            Tab.Groupboxes[Info.Name] = Groupbox
+                if ActiveTab then
+                    ActiveTab:HideTab()
+                end
+                ActiveTab = Tab
 
-            return Groupbox
-        end
+                Blocker.Visible = true
+                TabButton.BackgroundColor3 = Library.MainColor
+                TabFrame.Visible = true
+            end
 
-        function Tab:AddLeftGroupbox(Name)
-            return Tab:AddGroupbox({Side = 1, Name = Name})
-        end
+            function Tab:HideTab()
+                Blocker.Visible = false
+                TabButton.BackgroundColor3 = Library.BackgroundColor
+                TabFrame.Visible = false
+            end
 
-        function Tab:AddRightGroupbox(Name)
-            return Tab:AddGroupbox({Side = 2, Name = Name})
-        end
+            function Tab:AddGroupbox(Name, Parent)
+                local Groupbox = {}
 
-        function Tab:AddTabbox(Info)
-            local Tabbox = {Tabs = {}}
-
-            local BoxOuter = Library:Create("Frame", {
-                BackgroundColor3 = Library.BackgroundColor,
-                BorderColor3 = Library.OutlineColor,
-                BorderMode = Enum.BorderMode.Inset,
-                Size = UDim2.new(1, 0, 0, 0),
-                ZIndex = 2,
-                Parent = Info.Side == 1 and LeftSide or RightSide
-            })
-
-            Library:AddToRegistry(BoxOuter, {BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor"})
-
-            local BoxInner = Library:Create("Frame", {
-                BackgroundColor3 = Library.BackgroundColor,
-                BorderColor3 = Color3.new(0, 0, 0),
-                Size = UDim2.new(1, -2, 1, -2),
-                Position = UDim2.new(0, 1, 0, 1),
-                ZIndex = 4,
-                Parent = BoxOuter
-            })
-
-            Library:AddToRegistry(BoxInner, {
-                BackgroundColor3 = "BackgroundColor",
-            })
-
-            local Highlight = Library:Create("Frame", {
-                BackgroundColor3 = Library.AccentColor,
-                BorderSizePixel = 0,
-                Size = UDim2.new(1, 0, 0, 2),
-                ZIndex = 10,
-                Parent = BoxInner
-            })
-
-            Library:AddToRegistry(Highlight, {BackgroundColor3 = "AccentColor"})
-
-            local TabboxButtons = Library:Create("Frame", {
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 0, 0, 1),
-                Size = UDim2.new(1, 0, 0, 18),
-                ZIndex = 5,
-                Parent = BoxInner
-            })
-
-            Library:Create('UIListLayout', {
-                FillDirection = Enum.FillDirection.Horizontal,
-                HorizontalAlignment = Enum.HorizontalAlignment.Left,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-                Parent = TabboxButtons
-            })
-
-            function Tabbox:AddTab(Name)
-                local Tab = {}
-
-                local Button = Library:Create("Frame", {
-                    Active = true,
-                    BackgroundColor3 = Library.MainColor,
-                    BorderColor3 = Color3.new(0, 0, 0),
-                    Size = UDim2.new(0.5, 0, 1, 0),
-                    ZIndex = 6,
-                    Parent = TabboxButtons
+                local BoxOuter = Library:Create("Frame", {
+                    BackgroundColor3 = Library.BackgroundColor,
+                    BorderColor3 = Library.OutlineColor,
+                    BorderMode = Enum.BorderMode.Inset,
+                    Size = UDim2.new(1, 0, 0, 507 + 2),
+                    ZIndex = 2,
+                    Parent = Parent
                 })
 
-                Library:AddToRegistry(Button, {BackgroundColor3 = "MainColor"})
+                local BoxInner = Library:Create("Frame", {
+                    BackgroundColor3 = Library.BackgroundColor,
+                    BorderColor3 = Color3.new(0, 0, 0),
+                    Size = UDim2.new(1, -2, 1, -2),
+                    Position = UDim2.new(0, 1, 0, 1),
+                    ZIndex = 4,
+                    Parent = BoxOuter
+                })
 
-                local ButtonLabel = Library:CreateLabel({
-                    Size = UDim2.new(1, 0, 1, 0),
+                Library:Create("Frame", {
+                    BackgroundColor3 = Library.AccentColor,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(1, 0, 0, 2),
+                    ZIndex = 5,
+                    Parent = BoxInner
+                })
+
+                Library:CreateLabel({
+                    Size = UDim2.new(1, 0, 0, 18),
+                    Position = UDim2.new(0, 4, 0, 2),
                     TextSize = 14,
                     Text = Name,
-                    TextXAlignment = Enum.TextXAlignment.Center,
-                    ZIndex = 7,
-                    Parent = Button
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 5,
+                    Parent = BoxInner
                 })
-
-                local Block = Library:Create("Frame", {
-                    BackgroundColor3 = Library.BackgroundColor,
-                    BorderSizePixel = 0,
-                    Position = UDim2.new(0, 0, 1, 0),
-                    Size = UDim2.new(1, 0, 0, 1),
-                    Visible = false,
-                    ZIndex = 9,
-                    Parent = Button
-                })
-
-                Library:AddToRegistry(Block, {BackgroundColor3 = "BackgroundColor"})
 
                 local Container = Library:Create("Frame", {
                     BackgroundTransparency = 1,
                     Position = UDim2.new(0, 4, 0, 20),
                     Size = UDim2.new(1, -4, 1, -20),
                     ZIndex = 1,
-                    Visible = false,
                     Parent = BoxInner
                 })
 
@@ -4788,249 +3483,344 @@ function Library:CreateWindow(Configuration)
                     Parent = Container
                 })
 
-                function Tab:Show()
-                    for _,Tab in next, Tabbox.Tabs do
-                        Tab:Hide()
-                    end
-
-                    Container.Visible = true
-                    Block.Visible = true
-
-                    Button.BackgroundColor3 = Library.BackgroundColor
-                    Library.RegistryMap[Button].Properties.BackgroundColor3 = "BackgroundColor"
-
-                    Tab:Resize()
-                end
-
-                function Tab:Hide()
-                    Container.Visible = false
-                    Block.Visible = false
-
-                    Button.BackgroundColor3 = Library.MainColor
-                    Library.RegistryMap[Button].Properties.BackgroundColor3 = "MainColor"
-                end
-
-                function Tab:Resize()
-                    local TabCount = 0
-
-                    for _,Tab in next, Tabbox.Tabs do
-                        TabCount = TabCount + 1
-                    end
-
-for _,Button in next, TabboxButtons:GetChildren() do
-if Button:IsA('GuiObject') and not Button:IsA('UIListLayout') then
-Button.Size = UDim2.new(1 / TabCount, 0, 1, 0)
-end
-end
-
-                    if (not Container.Visible) then
-                        return
-                    end
-
+                function Groupbox:Resize()
                     local Size = 0
 
-for _,Element in next, Tab.Container:GetChildren() do
-if Element:IsA('GuiObject') and (not Element:IsA('UIListLayout')) and Element.Visible then
-Size = Size + Element.Size.Y.Offset
-end
-end
+                    for _,Element in next, Groupbox.Container:GetChildren() do
+                        if Element:IsA('GuiObject') and Element.Visible then
+                            Size = Size + Element.Size.Y.Offset
+                        end
+                    end
 
                     BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2)
                 end
 
-                Button.InputBegan:Connect(function(Input)
-                    if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame(Button) then
-                        Tab:Show()
+                Groupbox.Container = Container
+                setmetatable(Groupbox, BaseGroupbox)
+
+                Groupbox:AddBlank(3)
+                Groupbox:Resize()
+
+                return Groupbox
+            end
+
+            function Tab:AddLeftGroupbox(Name)
+                return Tab:AddGroupbox(Name, LeftSide)
+            end
+
+            function Tab:AddRightGroupbox(Name)
+                return Tab:AddGroupbox(Name, RightSide)
+            end
+
+            function Tab:AddTabbox(Parent)
+                local Tabbox = {Tabs = {}}
+
+                local BoxOuter = Library:Create("Frame", {
+                    BackgroundColor3 = Library.BackgroundColor,
+                    BorderColor3 = Library.OutlineColor,
+                    BorderMode = Enum.BorderMode.Inset,
+                    Size = UDim2.new(1, 0, 0, 0),
+                    ZIndex = 2,
+                    Parent = Parent
+                })
+
+                local BoxInner = Library:Create("Frame", {
+                    BackgroundColor3 = Library.BackgroundColor,
+                    BorderColor3 = Color3.new(0, 0, 0),
+                    Size = UDim2.new(1, -2, 1, -2),
+                    Position = UDim2.new(0, 1, 0, 1),
+                    ZIndex = 4,
+                    Parent = BoxOuter
+                })
+
+                Library:Create("Frame", {
+                    BackgroundColor3 = Library.AccentColor,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(1, 0, 0, 2),
+                    ZIndex = 10,
+                    Parent = BoxInner
+                })
+
+                local TabboxButtons = Library:Create("Frame", {
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0, 0, 0, 1),
+                    Size = UDim2.new(1, 0, 0, 18),
+                    ZIndex = 5,
+                    Parent = BoxInner
+                })
+
+                Library:Create('UIListLayout', {
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    HorizontalAlignment = Enum.HorizontalAlignment.Left,
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Parent = TabboxButtons
+                })
+
+                function Tabbox:AddTab(Name)
+                    local Tab = {}
+
+                    local Button = Library:Create("Frame", {
+                        Active = true,
+                        BackgroundColor3 = Library.MainColor,
+                        BorderColor3 = Color3.new(0, 0, 0),
+                        Size = UDim2.new(0.5, 0, 1, 0),
+                        ZIndex = 6,
+                        Parent = TabboxButtons
+                    })
+
+                    Library:CreateLabel({
+                        Size = UDim2.new(1, 0, 1, 0),
+                        TextSize = 14,
+                        Text = Name,
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                        ZIndex = 7,
+                        Parent = Button
+                    })
+
+                    local Block = Library:Create("Frame", {
+                        BackgroundColor3 = Library.BackgroundColor,
+                        BorderSizePixel = 0,
+                        Position = UDim2.new(0, 0, 1, 0),
+                        Size = UDim2.new(1, 0, 0, 1),
+                        Visible = false,
+                        ZIndex = 9,
+                        Parent = Button
+                    })
+
+                    local Container = Library:Create("Frame", {
+                        BackgroundTransparency = 1,
+                        Position = UDim2.new(0, 4, 0, 20),
+                        Size = UDim2.new(1, -4, 1, -20),
+                        ZIndex = 1,
+                        Visible = false,
+                        Parent = BoxInner
+                    })
+
+                    Library:Create('UIListLayout', {
+                        FillDirection = Enum.FillDirection.Vertical,
+                        SortOrder = Enum.SortOrder.LayoutOrder,
+                        Parent = Container
+                    })
+
+                    function Tab:Show()
+                        for _,Tab in next, Tabbox.Tabs do
+                            Tab:Hide()
+                        end
+
+                        Container.Visible = true
+                        Block.Visible = true
+
+                        Button.BackgroundColor3 = Library.BackgroundColor
+
                         Tab:Resize()
                     end
-                end)
 
-                Tab.Container = Container
-                Tabbox.Tabs[Name] = Tab
+                    function Tab:Hide()
+                        Container.Visible = false
+                        Block.Visible = false
 
-                setmetatable(Tab, BaseGroupbox)
+                        Button.BackgroundColor3 = Library.MainColor
+                    end
 
-                Tab:AddBlank(3)
-                Tab:Resize()
+                    function Tab:Resize()
+                        local TabCount = #Tabbox.Tabs
 
-                if #TabboxButtons:GetChildren() == 2 then
-                    Tab:Show()
+                        for _,Button in next, TabboxButtons:GetChildren() do
+                            if Button:IsA('GuiObject') then
+                                Button.Size = UDim2.new(1 / TabCount, 0, 1, 0)
+                            end
+                        end
+
+                        if (not Container.Visible) then
+                            return
+                        end
+
+                        local Size = 0
+
+                        for _,Element in next, Tab.Container:GetChildren() do
+                            if Element:IsA('GuiObject') and Element.Visible then
+                                Size = Size + Element.Size.Y.Offset
+                            end
+                        end
+
+                        BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2)
+                    end
+
+                    Button.InputBegan:Connect(function(Input)
+                        if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame(Button) then
+                            Tab:Show()
+                        end
+                    end)
+
+                    Tab.Container = Container
+                    Tabbox.Tabs[#Tabbox.Tabs + 1] = Tab
+
+                    setmetatable(Tab, BaseGroupbox)
+
+                    Tab:AddBlank(3)
+                    Tab:Resize()
+
+                    if #Tabbox.Tabs == 1 then
+                        Tab:Show()
+                    end
+
+                    return Tab
                 end
 
-                return Tab
+                return Tabbox
             end
 
-            Tab.Tabboxes[Info.Name or ''] = Tabbox
-            return Tabbox
-        end
+            function Tab:AddLeftTabbox()
+                return Tab:AddTabbox(LeftSide)
+            end
 
-        function Tab:AddLeftTabbox(Name)
-            return Tab:AddTabbox({Name = Name, Side = 1})
-        end
+            function Tab:AddRightTabbox()
+                return Tab:AddTabbox(RightSide)
+            end
 
-        function Tab:AddRightTabbox(Name)
-            return Tab:AddTabbox({Name = Name, Side = 2})
-        end
+            TabButton.InputBegan:Connect(function(Input)
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    Tab:ShowTab()
+                end
+            end)
 
-        TabButton.InputBegan:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if not ActiveTab then
                 Tab:ShowTab()
             end
+
+            Tab.Frame = TabFrame
+            return Tab
+        end
+
+        local ModalElement = Library:Create('TextButton', {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 0, 0, 0),
+            Visible = true,
+            Text = '',
+            Modal = false,
+            Parent = ScreenGui
+        })
+
+        local TransparencyCache = {}
+        Outer.DescendantRemoving:Connect(function(Descendant)
+            TransparencyCache[Descendant] = nil
         end)
+        local Toggled = false
+        local Fading = false
+        local FadeInfo = TweenInfo.new(0.2, Enum.EasingStyle.Linear)
 
-        if #TabContainer:GetChildren() == 1 then
-            Tab:ShowTab()
-        end
+        function Library:Toggle()
+            if Fading then
+                return
+            end
 
-        Window.Tabs[Name] = Tab
-        Tab.Frame = TabFrame
-        return Tab
-    end
+            Fading = true
+            Toggled = not Toggled
+            ModalElement.Modal = Toggled
+            Library.Toggled = Toggled
+            TweenService:Create(Outer, FadeInfo, {BackgroundTransparency = Toggled and 0 or 1}):Play()
 
-    local ModalElement = Library:Create('TextButton', {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 0, 0, 0),
-        Visible = true,
-        Text = '',
-        Modal = false,
-        Parent = ScreenGui
-    })
+            if Toggled then
+                ScreenGui.Enabled = true
+                Outer.Visible = true
+                task.spawn(function()
+                    local State = UserInputService.MouseIconEnabled
 
-    local TransparencyCache = {}
-    local Toggled = false
-    local Fading = false
+                    local Cursor = Drawing.new('Triangle')
+                    Cursor.Thickness = 1
+                    Cursor.Filled = true
+                    Cursor.Visible = true
 
-    function Library:Toggle()
-        if Fading then
-            return
-        end
+                    local CursorOutline = Drawing.new('Triangle')
+                    CursorOutline.Thickness = 1
+                    CursorOutline.Filled = false
+                    CursorOutline.Color = Color3.new(0, 0, 0)
+                    CursorOutline.Visible = true
 
-        Fading = true
-        Toggled = (not Toggled)
-        ModalElement.Modal = Toggled
-        Library.Toggled = Toggled
+                    while Toggled and ScreenGui.Parent do
+                        UserInputService.MouseIconEnabled = false
 
-        if Toggled then
-            Outer.Visible = true
-            InputShield.Visible = true
-            task.spawn(function()
-                local State = UserInputService.MouseIconEnabled
+                        local MouseLocation = UserInputService:GetMouseLocation()
 
-                local Cursor = Drawing.new('Triangle')
-                Cursor.Thickness = 1
-                Cursor.Filled = true
-                Cursor.Visible = true
+                        Cursor.Color = Library.AccentColor
 
-                local CursorOutline = Drawing.new('Triangle')
-                CursorOutline.Thickness = 1
-                CursorOutline.Filled = false
-                CursorOutline.Color = Color3.new(0, 0, 0)
-                CursorOutline.Visible = true
+                        Cursor.PointA = Vector2.new(MouseLocation.X, MouseLocation.Y)
+                        Cursor.PointB = Vector2.new(MouseLocation.X + 16, MouseLocation.Y + 6)
+                        Cursor.PointC = Vector2.new(MouseLocation.X + 6, MouseLocation.Y + 16)
 
-                while Toggled and ScreenGui.Parent do
-                    UserInputService.MouseIconEnabled = false
+                        CursorOutline.PointA = Cursor.PointA
+                        CursorOutline.PointB = Cursor.PointB
+                        CursorOutline.PointC = Cursor.PointC
 
-                    local MouseLocation = UserInputService:GetMouseLocation()
+                        PreRender:Wait()
+                    end
 
-                    Cursor.Color = Library.AccentColor
+                    UserInputService.MouseIconEnabled = State
+                    Cursor:Remove()
+                    CursorOutline:Remove()
+                end)
+            end
 
-                    Cursor.PointA = Vector2.new(MouseLocation.X, MouseLocation.Y)
-                    Cursor.PointB = Vector2.new(MouseLocation.X + 16, MouseLocation.Y + 6)
-                    Cursor.PointC = Vector2.new(MouseLocation.X + 6, MouseLocation.Y + 16)
+            for _,Descendant in Outer:QueryDescendants("ImageLabel, TextLabel, TextBox, TextButton, Frame, ScrollingFrame, UIStroke") do
+                local Properties = {}
 
-                    CursorOutline.PointA = Cursor.PointA
-                    CursorOutline.PointB = Cursor.PointB
-                    CursorOutline.PointC = Cursor.PointC
-
-                    PreRender:Wait()
+                if Descendant:IsA("ImageLabel") then
+                    table.insert(Properties, "ImageTransparency")
+                    table.insert(Properties, "BackgroundTransparency")
+                elseif Descendant:IsA("TextLabel") or Descendant:IsA("TextBox") or Descendant:IsA("TextButton") then
+                    table.insert(Properties, "TextTransparency")
+                    table.insert(Properties, "BackgroundTransparency")
+                elseif Descendant:IsA("Frame") or Descendant:IsA("ScrollingFrame") then
+                    table.insert(Properties, "BackgroundTransparency")
+                elseif Descendant:IsA("UIStroke") then
+                    table.insert(Properties, "Transparency")
                 end
 
-                UserInputService.MouseIconEnabled = State
-                Cursor:Remove()
-                CursorOutline:Remove()
-            end)
-        end
-
-        for _,Descendant in Outer:GetDescendants() do
-            local Properties = {}
-
-            if Descendant:IsA("ImageLabel") then
-                table.insert(Properties, "ImageTransparency")
-                table.insert(Properties, "BackgroundTransparency")
-            elseif Descendant:IsA('TextLabel') or Descendant:IsA("TextBox") then
-                table.insert(Properties, "TextTransparency")
-            elseif Descendant:IsA("Frame") or Descendant:IsA("ScrollingFrame") then
-                table.insert(Properties, "BackgroundTransparency")
-            elseif Descendant:IsA('UIStroke') then
-                table.insert(Properties, "Transparency")
-            end
-
-            local Cache = TransparencyCache[Descendant]
-
-            if (not Cache) then
-                Cache = {}
-                TransparencyCache[Descendant] = Cache
-            end
-
-            for _,Prop in next, Properties do
-                if not Cache[Prop] then
-                    Cache[Prop] = Descendant[Prop]
+                local Cache = TransparencyCache[Descendant]
+                if not Cache then
+                    Cache = {}
+                    TransparencyCache[Descendant] = Cache
                 end
 
-                if Cache[Prop] == 1 then
-                    continue
+                for _,Prop in next, Properties do
+                    local Transparency = Prop == "BackgroundTransparency" and Descendant:GetAttribute("FadeTransparency")
+                    if Transparency then
+                        Cache[Prop] = Transparency
+                    elseif not Cache[Prop] or not Toggled then
+                        Cache[Prop] = Descendant[Prop]
+                    end
+
+                    if Cache[Prop] == 1 then
+                        continue
+                    end
+                    if Toggled then
+                        Descendant[Prop] = 1
+                    end
+
+                    TweenGuiProperty(Descendant, Prop, Toggled and Cache[Prop] or 1, FadeInfo)
                 end
-
-                TweenService:Create(Descendant, TweenInfo.new(0.2, Enum.EasingStyle.Linear), {[Prop] = Toggled and Cache[Prop] or 1}):Play()
             end
+
+            task.wait(0.2)
+            Outer.Visible = Toggled
+            if not Toggled then
+                for Frame in next, Library.OpenedFrames do
+                    Frame.Visible = false
+                    Library.OpenedFrames[Frame] = nil
+                end
+                if Library.ConfigOverlay then
+                    Library.ConfigOverlay.Visible = false
+                end
+            end
+            Fading = false
         end
 
-        task.wait(0.2)
-        Outer.Visible = Toggled
-        InputShield.Visible = Toggled
-        if not Toggled then
-            local Open = {}
-            for Frame in next, Library.OpenedFrames do
-                Open[#Open + 1] = Frame
-            end
-            for _,Frame in ipairs(Open) do
-                Frame.Visible = false
-                Library.OpenedFrames[Frame] = nil
-            end
-            if Library.ConfigOverlay then
-                Library.ConfigOverlay.Visible = false
-            end
-        end
-        Fading = false
-    end
+        return AddTab("Aiming"), AddTab("Visuals"), AddTab("Miscellaneous"), AddTab("Settings"), AddTab("Configs")
+    end)()
 
-    UserInputService.InputBegan:Connect(function(Input, Processed)
-        if type(Library.ToggleKeybind) == 'table' and Library.ToggleKeybind.Type == 'KeyPicker' then
-            if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind.Value then
-                task.spawn(Library.Toggle)
-            end
-        elseif Input.KeyCode == Enum.KeyCode.RightControl or (Input.KeyCode == Enum.KeyCode.RightShift and (not Processed)) then
-            task.spawn(Library.Toggle)
-        end
-    end)
-
-    Window.Holder = Outer
-    return Window
-end
-
-function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName)
-    local Window = self:CreateWindow({Title = "PhantomWare | discord.gg/DwRT2nH93D" .. (ExecutorName and (" | " .. ExecutorName) or ""), TabPadding = 8})
-    local Tabs = {
-        Aiming = Window:AddTab("Aiming"),
-        Visuals = Window:AddTab("Visuals"),
-        Miscellaneous = Window:AddTab("Miscellaneous"),
-        Settings = Window:AddTab("Settings"),
-        Configs = Window:AddTab("Configs")
-    }
-
-    local function AimingTab()
-        local Aiming_RageBot = Tabs.Aiming:AddRightGroupbox("RageBot")
-        local Aiming_Aimbot = Tabs.Aiming:AddLeftGroupbox("Aimbot")
+    local function Build_AimingTab()
+        local Aiming_RageBot = AimingTab:AddRightGroupbox("RageBot")
+        local Aiming_Aimbot = AimingTab:AddLeftGroupbox("Aimbot")
 
         local AimbotEnabledToggle = Aiming_Aimbot:AddToggle("Aimbot_Enabled", {Text = "Enabled", Default = UIState[1].Aimbot_Enabled, Callback = function(Value)
             UIState[1].Aimbot_Enabled = Value
@@ -5038,13 +3828,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         AimbotEnabledToggle:AddDropdown("Aimbot_Type", {Default = UIState[1].Aimbot_Type, Values = {"None", "Camera", "Mouse", "Silent"}, Callback = function(Value)
             UIState[1].Aimbot_Type = Value
         end})
-        AimbotEnabledToggle:AddKeyPicker("Aimbot_Keybind", {Default = UIState[1].Aimbot_Keybind, Mode = "Toggle", Text = "Aimbot", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[1].Aimbot_Keybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.Aimbot_Enabled:SetValue(Value)
-            end
-        end})
+        AimbotEnabledToggle:AddKeyPicker("Aimbot_Keybind", {Default = "None", Mode = "Toggle", Text = "Aimbot", SyncToggleState = true})
 
         local AimbotDependencyBox = Aiming_Aimbot:AddDependencyBox():SetupDependencies({{Toggles.Aimbot_Enabled, true}})
 
@@ -5060,11 +3844,31 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
+        local RedirectGrenadeMenu = AimbotDependencyBox:AddToggle("Aimbot_RedirectGrenade", {Text = "Redirect Grenade", Default = UIState[1].Aimbot_RedirectGrenade, Callback = function(Value)
+            UIState[1].Aimbot_RedirectGrenade = Value
+        end}):AddSettingsMenu("Redirect Grenade Settings")
+        RedirectGrenadeMenu:AddToggle("Aimbot_FuseAssist", {Text = "Fuse Assist", Default = UIState[1].Aimbot_FuseAssist, Callback = function(Value)
+            UIState[1].Aimbot_FuseAssist = Value
+        end})
+
         local SilentDependencyBox = AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}})
+        local AimbotCollateralMenu = SilentDependencyBox:AddToggle("Aimbot_Collateral", {
+            Text = "Collateral", Default = UIState[1].Aimbot_Collateral, Callback = function(Value)
+                UIState[1].Aimbot_Collateral = Value
+            end
+        }):AddSettingsMenu("Collateral Settings")
+        AimbotCollateralMenu:AddSlider("Aimbot_CollateralRadius", {
+            Text = "Radius", Default = UIState[1].Aimbot_CollateralRadius, Min = 1, Max = 9.9, Rounding = 1, Callback = function(Value)
+                UIState[1].Aimbot_CollateralRadius = Value
+            end
+        })
 
         local AutoFireMenu = SilentDependencyBox:AddToggle("Aimbot_AutoFire", {
             Text = "Auto Fire", Default = UIState[1].Aimbot_AutoFire, Callback = function(Value)
                 UIState[1].Aimbot_AutoFire = Value
+                if not Value then
+                    UIFeatures[10]:SetFiring()
+                end
             end
         }):AddSettingsMenu("Auto Fire Settings")
         AutoFireMenu:AddToggle("Aimbot_AutoWall", {
@@ -5086,9 +3890,32 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         AimbotDependencyBox:AddDivider()
 
-        AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
+        local WallCheckMenu = AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
             UIState[1].Aimbot_WallCheck = Value
+        end}):AddSettingsMenu("Wall Check Settings")
+        WallCheckMenu:AddDropdown("Aimbot_WallCheckAction", {Text = "Action", Default = UIState[1].Aimbot_WallCheckAction, Values = {"Ignore Target", "Pause Aimbot"}, Callback = function(Value)
+            UIState[1].Aimbot_WallCheckAction = Value
         end})
+
+        local AimbotHitScanMenu = AimbotDependencyBox:AddToggle("Aimbot_HitScanning", {Text = "Hit Scanning", Default = UIState[1].Aimbot_HitScanning, Callback = function(Value)
+            UIState[1].Aimbot_HitScanning = Value
+        end}):AddSettingsMenu("Hit Scanning Settings")
+        AimbotHitScanMenu:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"None", "Camera", "Mouse"}}}):AddDropdown("Aimbot_HitScanningMode", {Text = "Scan Mode", Default = UIState[1].Aimbot_HitScanningMode, Values = {"Cardinal", "Sphere", "Corners"}, Callback = function(Value)
+            UIState[1].Aimbot_HitScanningMode = Value
+        end})
+
+        local SilentScanBox = AimbotHitScanMenu:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}})
+        SilentScanBox:AddDropdown("Aimbot_HitScanningAxes", {Text = "Axes", Default = UIState[1].Aimbot_HitScanningAxes, Values = {"X", "Y", "Z"}, Multi = true, Callback = function(Value)
+            UIState[1].Aimbot_HitScanningAxes = Value
+        end})
+        SilentScanBox:AddSlider("Aimbot_HitScanningSteps", {Text = "Steps", Default = UIState[1].Aimbot_HitScanningSteps, Min = 1, Max = 5, Rounding = 0, Callback = function(Value)
+            UIState[1].Aimbot_HitScanningSteps = Value
+        end})
+        AimbotHitScanMenu:AddSlider("Aimbot_HitScanningRadius", {
+            Text = "Scan Radius", Default = UIState[1].Aimbot_HitScanningRadius, Min = 0.5, Max = 3, Rounding = 1, Callback = function(Value)
+                UIState[1].Aimbot_HitScanningRadius = Value
+            end
+        })
 
         AimbotDependencyBox:AddToggle("Aimbot_DeathNotification", {Text = "Death Notification", Default = UIState[1].Aimbot_DeathNotification, Callback = function(Value)
             UIState[1].Aimbot_DeathNotification = Value
@@ -5099,46 +3926,62 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local FOVMenu = AimbotDependencyBox:AddToggle("Aimbot_ShowFOVCircle", {Text = "FOV Circle", Default = UIState[1].Aimbot_ShowFOVCircle, Callback = function(Value)
             UIState[1].Aimbot_ShowFOVCircle = Value
         end}):AddSettingsMenu("FOV Circle Settings")
-        FOVMenu:AddColorPicker("Aimbot_FOVCircleColor", {Default = UIState[1].Aimbot_FOVCircleColor, Title = "FOV Circle Color", Transparency = 1 - UIState[1].Aimbot_FOVCircleOpacity}).Callback = function(Value)
+        FOVMenu:AddColorPicker("Aimbot_FOVCircleColor", {Default = UIState[1].Aimbot_FOVCircleColor, Transparency = 1 - UIState[1].Aimbot_FOVCircleOpacity}).Callback = function(Value)
             UIState[1].Aimbot_FOVCircleColor = Value
             UIState[1].Aimbot_FOVCircleOpacity = 1 - Options.Aimbot_FOVCircleColor.Transparency
         end
+        local FilledBox = FOVMenu:AddDependencyBox()
+        FilledBox:AddToggle("Aimbot_FOVCircleFilled", {Text = "Filled", Default = UIState[1].Aimbot_FOVCircleFilled, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleFilled = Value
+            if Value and Toggles.Aimbot_FOVCircleDotted and Toggles.Aimbot_FOVCircleDotted.Value then
+                Toggles.Aimbot_FOVCircleDotted:SetValue(false)
+            end
+        end})
+        local OutlineBox = FOVMenu:AddDependencyBox():SetupDependencies({{Toggles.Aimbot_FOVCircleFilled, false}})
+        OutlineBox:AddToggle("Aimbot_FOVCircleDotted", {Text = "Dotted", Default = UIState[1].Aimbot_FOVCircleDotted, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleDotted = Value
+            if Value and Toggles.Aimbot_FOVCircleFilled.Value then
+                Toggles.Aimbot_FOVCircleFilled:SetValue(false)
+            end
+        end})
+        FilledBox:SetupDependencies({{Toggles.Aimbot_FOVCircleDotted, false}})
+        if Toggles.Aimbot_FOVCircleFilled.Value and Toggles.Aimbot_FOVCircleDotted.Value then
+            Toggles.Aimbot_FOVCircleDotted:SetValue(false)
+        end
+        OutlineBox:AddSlider("Aimbot_FOVCircleThickness", {Text = "Thickness", Default = UIState[1].Aimbot_FOVCircleThickness, Min = 1, Max = 5, Rounding = 1, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleThickness = Value
+        end})
+        FOVMenu:AddSlider("Aimbot_FOVCircleRadius", {Text = "Radius", Default = UIState[1].Aimbot_FOVCircleRadius, Min = 15, Max = 800, Rounding = 0, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleRadius = Value
+        end})
+        local FireMenu = FOVMenu:AddToggle("Aimbot_FOVCircleFireExpansion", {Text = "Fire Expansion", Default = UIState[1].Aimbot_FOVCircleFireExpansion, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleFireExpansion = Value
+        end}):AddSettingsMenu("Fire Expansion Settings")
+        FireMenu:AddSlider("Aimbot_FOVCircleFireAmount", {Text = "Amount", Default = UIState[1].Aimbot_FOVCircleFireAmount, Min = 15, Max = 100, Rounding = 0, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleFireAmount = Value
+        end})
+        FireMenu:AddSlider("Aimbot_FOVCircleFireDuration", {Text = "Return Duration (s)", Default = UIState[1].Aimbot_FOVCircleFireDuration, Min = 0.05, Max = 1, Rounding = 2, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleFireDuration = Value
+        end})
         FOVMenu:AddToggle("Aimbot_FOVCircleFollowRecoil", {Text = "Follow Recoil", Default = UIState[1].Aimbot_FOVCircleFollowRecoil, Callback = function(Value)
             UIState[1].Aimbot_FOVCircleFollowRecoil = Value
         end})
-        FOVMenu:AddSlider("Aimbot_FOVCircleRadius", {
-            Text = "FOV Radius", Default = UIState[1].Aimbot_FOVCircleRadius, Min = 10, Max = 800, Rounding = 0, Callback = function(Value)
-                UIState[1].Aimbot_FOVCircleRadius = Value
-            end
-        })
-
-        AimbotDependencyBox:AddDivider()
 
         AimbotDependencyBox:AddToggle("Aimbot_TargetTracer", {Text = "Target Tracer", Default = UIState[1].Aimbot_TargetTracer, Callback = function(Value)
             UIState[1].Aimbot_TargetTracer = Value
-        end}):AddColorPicker("Aimbot_TargetTracerColor", {Default = UIState[1].Aimbot_TargetTracerColor, Title = "Target Tracer Color", Transparency = 1 - UIState[1].Aimbot_TargetTracerOpacity, Callback = function(Value)
+        end}):AddColorPicker("Aimbot_TargetTracerColor", {Default = UIState[1].Aimbot_TargetTracerColor, Transparency = 1 - UIState[1].Aimbot_TargetTracerOpacity, Callback = function(Value)
             UIState[1].Aimbot_TargetTracerColor = Value
             UIState[1].Aimbot_TargetTracerOpacity = 1 - Options.Aimbot_TargetTracerColor.Transparency
         end})
 
-        local RedirectGrenadeMenu = AimbotDependencyBox:AddToggle("Aimbot_RedirectGrenade", {Text = "Redirect Grenade", Default = UIState[1].Aimbot_RedirectGrenade, Callback = function(Value)
-            UIState[1].Aimbot_RedirectGrenade = Value
-        end}):AddSettingsMenu("Redirect Grenade Settings")
-        RedirectGrenadeMenu:AddToggle("Aimbot_FuseAssist", {Text = "Fuse Assist", Default = UIState[1].Aimbot_FuseAssist, Callback = function(Value)
-            UIState[1].Aimbot_FuseAssist = Value
-        end})
-
         Aiming_RageBot:AddToggle("RageBot_Enabled", {Text = "Enabled", Default = UIState[1].RageBot_Enabled, Callback = function(Value)
             UIState[1].RageBot_Enabled = Value
-        end}):AddKeyPicker("RageBot_Keybind", {Default = UIState[1].RageBot_Keybind, Mode = "Toggle", Text = "RageBot", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[1].RageBot_Keybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.RageBot_Enabled:SetValue(Value)
-            end
-        end})
+        end}):AddKeyPicker("RageBot_Keybind", {Default = "None", Mode = "Toggle", Text = "RageBot", SyncToggleState = true})
 
         local RageBotDependencyBox = Aiming_RageBot:AddDependencyBox():SetupDependencies({{Toggles.RageBot_Enabled, true}})
+        RageBotDependencyBox:AddToggle("RageBot_BlockShooting", {Text = "Block Shooting", Default = UIState[1].RageBot_BlockShooting, Callback = function(Value)
+            UIState[1].RageBot_BlockShooting = Value
+        end})
         RageBotDependencyBox:AddDropdown("RageBot_Part", {Text = "Part", Default = UIState[1].RageBot_Part, Values = {"Head", "Torso", "Best"}, Callback = function(Value)
             UIState[1].RageBot_Part = Value
         end})
@@ -5149,9 +3992,14 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[1].RageBot_WallPenetrationDetection = Value
         end})
 
-        RageBotDependencyBox:AddToggle("RageBot_Collateral", {Text = "Collateral", Default = UIState[1].RageBot_Collateral, Callback = function(Value)
+        local RageBotCollateralMenu = RageBotDependencyBox:AddToggle("RageBot_Collateral", {Text = "Collateral", Default = UIState[1].RageBot_Collateral, Callback = function(Value)
             UIState[1].RageBot_Collateral = Value
-        end})
+        end}):AddSettingsMenu("Collateral Settings")
+        RageBotCollateralMenu:AddSlider("RageBot_CollateralRadius", {
+            Text = "Radius", Default = UIState[1].RageBot_CollateralRadius, Min = 1, Max = 9.9, Rounding = 1, Callback = function(Value)
+                UIState[1].RageBot_CollateralRadius = Value
+            end
+        })
 
         RageBotDependencyBox:AddDivider()
 
@@ -5162,12 +4010,10 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[1].RageBot_HitScanningMode = Value
         end})
         HitScanMenu:AddSlider("RageBot_HitScanningRadius", {
-            Text = "Scan Radius", Default = UIState[1].RageBot_HitScanningRadius, Min = 0.5, Max = 3, Rounding = 1, Callback = function(Value)
+            Text = "Scan Radius", Default = UIState[1].RageBot_HitScanningRadius, Min = 0.5, Max = 9.9, Rounding = 1, Callback = function(Value)
                 UIState[1].RageBot_HitScanningRadius = Value
             end
         })
-
-        RageBotDependencyBox:AddDivider()
 
         local FireScanMenu = RageBotDependencyBox:AddToggle("RageBot_FireScanning", {Text = "Fire Scanning", Default = UIState[1].RageBot_FireScanning, Callback = function(Value)
             UIState[1].RageBot_FireScanning = Value
@@ -5176,13 +4022,23 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[1].RageBot_FireScanningMode = Value
         end})
         FireScanMenu:AddSlider("RageBot_FireScanningRadius", {
-            Text = "Scan Radius", Default = UIState[1].RageBot_FireScanningRadius, Min = 0, Max = 15.9, Rounding = 1, Callback = function(Value)
+            Text = "Scan Radius", Default = UIState[1].RageBot_FireScanningRadius, Min = 0.1, Max = 15.9, Rounding = 1, Callback = function(Value)
                 UIState[1].RageBot_FireScanningRadius = Value
             end
         })
         FireScanMenu:AddDependencyBox():SetupDependencies({{Options.RageBot_FireScanningMode, "Sphere"}}):AddSlider("RageBot_FireScanningCount", {
             Text = "Scan Count", Default = UIState[1].RageBot_FireScanningCount, Min = 1, Max = 16, Rounding = 0, Callback = function(Value)
                 UIState[1].RageBot_FireScanningCount = Value
+                UIFeatures[13]()
+            end
+        })
+
+        local ScanLimitMenu = RageBotDependencyBox:AddToggle("RageBot_ScanLimit", {Text = "Scan Limit", Default = UIState[1].RageBot_ScanLimit, Callback = function(Value)
+            UIState[1].RageBot_ScanLimit = Value
+        end}):AddSettingsMenu("Scan Limit Settings")
+        ScanLimitMenu:AddSlider("RageBot_ScanLimitAmount", {
+            Text = "Amount", Default = UIState[1].RageBot_ScanLimitAmount, Min = 16, Max = 1024, Rounding = 0, Callback = function(Value)
+                UIState[1].RageBot_ScanLimitAmount = Value
             end
         })
 
@@ -5197,17 +4053,17 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
         BacktrackMenu:AddSlider("RageBot_BacktrackTime", {
-            Text = "Time (ms)", Default = UIState[1].RageBot_BacktrackTime, Min = 50, Max = 500, Rounding = 0, Callback = function(Value)
+            Text = "Time", Default = UIState[1].RageBot_BacktrackTime, Min = 50, Max = 500, Rounding = 0, Suffix = "ms", Callback = function(Value)
                 UIState[1].RageBot_BacktrackTime = Value
             end
         })
     end
 
-    local function VisualsTab()
-        local Visuals_ESPVisualsGroupbox = Tabs.Visuals:AddLeftGroupbox("ESP Visuals")
-        local Visuals_CombatGroupbox = Tabs.Visuals:AddRightGroupbox("Combat")
+    local function Build_VisualsTab()
+        local Visuals_ESPVisualsGroupbox = VisualsTab:AddLeftGroupbox("ESP Visuals")
+        local Visuals_CombatGroupbox = VisualsTab:AddRightGroupbox("Combat")
 
-        local World_Tabbox = Tabs.Visuals:AddRightTabbox("World")
+        local World_Tabbox = VisualsTab:AddRightTabbox()
         local World_Camera = World_Tabbox:AddTab("Camera")
         local World_Lighting = World_Tabbox:AddTab("Lighting")
         local World_ViewModel = World_Tabbox:AddTab("ViewModel")
@@ -5215,7 +4071,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local LocalBulletTracers_Menu = Visuals_CombatGroupbox:AddToggle("Combat_LocalBulletTracers", {Text = "Local Bullet Tracers", Default = UIState[2].Combat_LocalBulletTracers, Callback = function(Value)
             UIState[2].Combat_LocalBulletTracers = Value
         end}):AddSettingsMenu("Local Bullet Tracer Settings")
-        LocalBulletTracers_Menu:AddColorPicker("Combat_LocalBulletTracerColor", {Default = UIState[2].Combat_LocalBulletTracerColor, Title = "Tracer Color", Callback = function(Value)
+        LocalBulletTracers_Menu:AddColorPicker("Combat_LocalBulletTracerColor", {Default = UIState[2].Combat_LocalBulletTracerColor, Callback = function(Value)
             UIState[2].Combat_LocalBulletTracerColor = Value
         end})
         LocalBulletTracers_Menu:AddDropdown("Combat_LocalBulletTracerType", {Text = "Tracer Type", Default = UIState[2].Combat_LocalBulletTracerType, Values = {"Beam", "Wavy Beam"}, Callback = function(Value)
@@ -5234,7 +4090,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local EnemyBulletTracers_Menu = Visuals_CombatGroupbox:AddToggle("Combat_EnemyBulletTracers", {Text = "Enemy Bullet Tracers", Default = UIState[2].Combat_EnemyBulletTracers, Callback = function(Value)
             UIState[2].Combat_EnemyBulletTracers = Value
         end}):AddSettingsMenu("Enemy Bullet Tracer Settings")
-        EnemyBulletTracers_Menu:AddColorPicker("Combat_EnemyBulletTracerColor", {Default = UIState[2].Combat_EnemyBulletTracerColor, Title = "Tracer Color", Callback = function(Value)
+        EnemyBulletTracers_Menu:AddColorPicker("Combat_EnemyBulletTracerColor", {Default = UIState[2].Combat_EnemyBulletTracerColor, Callback = function(Value)
             UIState[2].Combat_EnemyBulletTracerColor = Value
         end})
         EnemyBulletTracers_Menu:AddDropdown("Combat_EnemyBulletTracerType", {Text = "Tracer Type", Default = UIState[2].Combat_EnemyBulletTracerType, Values = {"Beam", "Wavy Beam"}, Callback = function(Value)
@@ -5253,7 +4109,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local TeamBulletTracers_Menu = Visuals_CombatGroupbox:AddToggle("Combat_TeamBulletTracers", {Text = "Team Bullet Tracers", Default = UIState[2].Combat_TeamBulletTracers, Callback = function(Value)
             UIState[2].Combat_TeamBulletTracers = Value
         end}):AddSettingsMenu("Team Bullet Tracer Settings")
-        TeamBulletTracers_Menu:AddColorPicker("Combat_TeamBulletTracerColor", {Default = UIState[2].Combat_TeamBulletTracerColor, Title = "Tracer Color", Callback = function(Value)
+        TeamBulletTracers_Menu:AddColorPicker("Combat_TeamBulletTracerColor", {Default = UIState[2].Combat_TeamBulletTracerColor, Callback = function(Value)
             UIState[2].Combat_TeamBulletTracerColor = Value
         end})
         TeamBulletTracers_Menu:AddDropdown("Combat_TeamBulletTracerType", {Text = "Tracer Type", Default = UIState[2].Combat_TeamBulletTracerType, Values = {"Beam", "Wavy Beam"}, Callback = function(Value)
@@ -5273,6 +4129,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local GrenadeTrajectoryMenu = Visuals_CombatGroupbox:AddToggle("Combat_GrenadeTrajectory", {Text = "Grenade Trajectory", Default = UIState[2].Combat_GrenadeTrajectory, Callback = function(Value)
             UIState[2].Combat_GrenadeTrajectory = Value
+            if not Value then
+                UIFeatures[11]:ClearTrajectory()
+            end
         end}):AddSettingsMenu("Grenade Trajectory Settings")
         GrenadeTrajectoryMenu:AddToggle("Combat_GrenadeTrajectoryIgnoreAimbot", {Text = "Ignore Aimbot", Default = UIState[2].Combat_GrenadeTrajectoryIgnoreAimbot, Callback = function(Value)
             UIState[2].Combat_GrenadeTrajectoryIgnoreAimbot = Value
@@ -5289,7 +4148,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local CustomCrosshairMenu = Visuals_CombatGroupbox:AddToggle("Combat_CustomCrosshair", {Text = "Custom Crosshair", Default = UIState[2].Combat_CustomCrosshair, Callback = function(Value)
             UIState[2].Combat_CustomCrosshair = Value
         end}):AddSettingsMenu("Custom Crosshair Settings")
-        CustomCrosshairMenu:AddColorPicker("Combat_CustomCrosshairColor", {Default = UIState[2].Combat_CustomCrosshairColor, Title = "Crosshair Color", Callback = function(Value)
+        CustomCrosshairMenu:AddColorPicker("Combat_CustomCrosshairColor", {Default = UIState[2].Combat_CustomCrosshairColor, Callback = function(Value)
             UIState[2].Combat_CustomCrosshairColor = Value
         end})
         CustomCrosshairMenu:AddSlider("Combat_CustomCrosshairSize", {
@@ -5322,31 +4181,38 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        local CustomRagdollsMenu = Visuals_CombatGroupbox:AddToggle("Combat_CustomRagdolls", {Text = "Custom Ragdolls", Default = UIState[2].Combat_CustomRagdolls, Callback = function(Value)
-            UIState[2].Combat_CustomRagdolls = Value
-            if Value then
-                for _,Child in next, GameData[3]:GetChildren() do
-                    UIFeatures[3](Child)
+        local function UpdateRagdolls()
+            if UIState[2].Combat_CustomRagdolls then
+                for _,Child in ipairs(GameData[3]:GetChildren()) do
+                    UIFeatures[2](Child, true)
                 end
             end
-        end}):AddSettingsMenu("Ragdoll Settings")
-        CustomRagdollsMenu:AddDropdown("Combat_RagdollEffect", {Text = "Effect", Default = UIState[2].Combat_RagdollEffect, Values = {"Launch", "Fling", "Float"}, Callback = function(Value)
+        end
+
+        local CustomRagdollsMenu = Visuals_CombatGroupbox:AddToggle("Combat_CustomRagdolls", {Text = "Custom Ragdolls", Default = UIState[2].Combat_CustomRagdolls, Callback = function(Value)
+            UIState[2].Combat_CustomRagdolls = Value
+            UpdateRagdolls()
+        end}):AddSettingsMenu("Custom Ragdoll Settings")
+        CustomRagdollsMenu:AddToggle("Combat_RagdollCustomEffect", {Text = "Custom Effect", Default = UIState[2].Combat_RagdollCustomEffect, Callback = function(Value)
+            UIState[2].Combat_RagdollCustomEffect = Value
+        end}):AddDropdown("Combat_RagdollEffect", {Text = "Effect", Default = UIState[2].Combat_RagdollEffect, Values = {"Launch", "Fling", "Float"}, Callback = function(Value)
             UIState[2].Combat_RagdollEffect = Value
         end})
-        CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Options.Combat_RagdollEffect, "Launch"}}):AddSlider("Combat_RagdollEffectLaunchForce", {Text = "Launch Force", Default = UIState[2].Combat_RagdollEffectLaunchForce, Min = 50, Max = 500, Rounding = 0, Callback = function(Value)
+        CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Toggles.Combat_RagdollCustomEffect, true}, {Options.Combat_RagdollEffect, "Launch"}}):AddSlider("Combat_RagdollEffectLaunchForce", {Text = "Launch Force", Default = UIState[2].Combat_RagdollEffectLaunchForce, Min = 50, Max = 500, Rounding = 0, Callback = function(Value)
             UIState[2].Combat_RagdollEffectLaunchForce = Value
         end})
-        CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Options.Combat_RagdollEffect, "Fling"}}):AddSlider("Combat_RagdollEffectFlingForce", {Text = "Fling Force", Default = UIState[2].Combat_RagdollEffectFlingForce, Min = 100, Max = 500, Rounding = 0, Callback = function(Value)
+        CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Toggles.Combat_RagdollCustomEffect, true}, {Options.Combat_RagdollEffect, "Fling"}}):AddSlider("Combat_RagdollEffectFlingForce", {Text = "Fling Force", Default = UIState[2].Combat_RagdollEffectFlingForce, Min = 100, Max = 500, Rounding = 0, Callback = function(Value)
             UIState[2].Combat_RagdollEffectFlingForce = Value
         end})
-        CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Options.Combat_RagdollEffect, "Float"}}):AddSlider("Combat_RagdollEffectFloatSpeed", {Text = "Float Speed", Default = UIState[2].Combat_RagdollEffectFloatSpeed, Min = 1, Max = 100, Rounding = 0, Callback = function(Value)
+        CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Toggles.Combat_RagdollCustomEffect, true}, {Options.Combat_RagdollEffect, "Float"}}):AddSlider("Combat_RagdollEffectFloatSpeed", {Text = "Float Speed", Default = UIState[2].Combat_RagdollEffectFloatSpeed, Min = 1, Max = 100, Rounding = 0, Callback = function(Value)
             UIState[2].Combat_RagdollEffectFloatSpeed = Value
         end})
         CustomRagdollsMenu:AddToggle("Combat_RagdollGhost", {Text = "Ghost", Default = UIState[2].Combat_RagdollGhost, Callback = function(Value)
             UIState[2].Combat_RagdollGhost = Value
-        end})
-		CustomRagdollsMenu:AddDependencyBox():SetupDependencies({{Toggles.Combat_RagdollGhost, true}}):AddLabel("Ghost Color"):AddColorPicker("Combat_RagdollGhostColor", {Default = UIState[2].Combat_RagdollGhostColor, Title = "Ghost Color", Callback = function(Value)
+            UpdateRagdolls()
+        end}):AddColorPicker("Combat_RagdollGhostColor", {Default = UIState[2].Combat_RagdollGhostColor, Callback = function(Value)
             UIState[2].Combat_RagdollGhostColor = Value
+            UpdateRagdolls()
         end})
 
         Visuals_CombatGroupbox:AddDivider()
@@ -5376,7 +4242,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local HitMarkersMenu = Visuals_CombatGroupbox:AddToggle("Combat_HitMarkers", {Text = "Hit Markers", Default = UIState[2].Combat_HitMarkers, Callback = function(Value)
             UIState[2].Combat_HitMarkers = Value
         end}):AddSettingsMenu("Hit Marker Settings")
-        HitMarkersMenu:AddColorPicker("Combat_HitMarkerColor", {Default = UIState[2].Combat_HitMarkerColor, Title = "Markers Color", Callback = function(Value)
+        HitMarkersMenu:AddColorPicker("Combat_HitMarkerColor", {Default = UIState[2].Combat_HitMarkerColor, Callback = function(Value)
             UIState[2].Combat_HitMarkerColor = Value
         end})
         HitMarkersMenu:AddDropdown("Combat_HitMarkerStyle", {Text = "Style", Default = UIState[2].Combat_HitMarkerStyle, Values = {"X", "Circle"}, Callback = function(Value)
@@ -5412,7 +4278,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local HitGhostsMenu = Visuals_CombatGroupbox:AddToggle("Combat_HitGhosts", {Text = "Hit Ghosts", Default = UIState[2].Combat_HitGhosts, Callback = function(Value)
             UIState[2].Combat_HitGhosts = Value
         end}):AddSettingsMenu("Hit Ghost Settings")
-        HitGhostsMenu:AddColorPicker("Combat_HitGhostsColor", {Default = UIState[2].Combat_HitGhostsColor, Title = "Ghost Color", Callback = function(Value)
+        HitGhostsMenu:AddColorPicker("Combat_HitGhostsColor", {Default = UIState[2].Combat_HitGhostsColor, Callback = function(Value)
             UIState[2].Combat_HitGhostsColor = Value
         end})
         HitGhostsMenu:AddSlider("Combat_HitGhostsLifetime", {
@@ -5440,48 +4306,46 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local ESPVisualsDependencies = Visuals_ESPVisualsGroupbox:AddDependencyBox():SetupDependencies({{Toggles.ESPVisuals_MasterSwitch, true}})
 
         local MasterSwitchMenu = Toggles.ESPVisuals_MasterSwitch:AddSettingsMenu("Master Switch Settings")
-        MasterSwitchMenu:AddSlider("ESPVisuals_MasterOpacity", {Text = "Master Opacity", Default = UIState[2].ESPVisuals_MasterOpacity, Min = 0, Max = 100, Rounding = 0, Callback = function(Value)
-            UIState[2].ESPVisuals_MasterOpacity = Value
-        end})
         MasterSwitchMenu:AddSlider("ESPVisuals_MaxDistance", {Text = "Max Distance", Default = UIState[2].ESPVisuals_MaxDistance, Min = 0, Max = 10000, Rounding = 0, Callback = function(Value)
             UIState[2].ESPVisuals_MaxDistance = Value
         end})
         MasterSwitchMenu:AddToggle("ESPVisuals_PerformanceMode", {Text = "Performance Mode", Default = UIState[2].ESPVisuals_PerformanceMode, Callback = function(Value)
             UIState[2].ESPVisuals_PerformanceMode = Value
         end})
-        MasterSwitchMenu:AddDependencyBox():SetupDependencies({{Toggles.ESPVisuals_PerformanceMode, true}}):AddDropdown("ESPVisuals_PerformanceQuality", {Text = "Quality", Default = UIState[2].ESPVisuals_PerformanceQuality, Values = {"Quality", "Balanced", "Performance"}, Callback = function(Value)
-            UIState[2].ESPVisuals_PerformanceQuality = Value
-        end})
 
         ESPVisualsDependencies:AddDivider()
 
-        local ChamsMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_Chams", {Text = "Highlight Chams", Default = UIState[2].ESPVisuals_Chams, Callback = function(Value)
-            UIState[2].ESPVisuals_Chams = Value
+        local HighlightChamsMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_HighlightChams", {Text = "Highlight Chams", Default = UIState[2].ESPVisuals_HighlightChams, Callback = function(Value)
+            UIState[2].ESPVisuals_HighlightChams = Value
         end}):AddSettingsMenu("Chams Settings")
-        ChamsMenu:AddColorPicker("ESPVisuals_ChamColor", {Default = UIState[2].ESPVisuals_ChamColor, Title = "Cham Color", Callback = function(Value)
-            UIState[2].ESPVisuals_ChamColor = Value
+        HighlightChamsMenu:AddColorPicker("ESPVisuals_HighlightChamColor", {Default = UIState[2].ESPVisuals_HighlightChamColor, Callback = function(Value)
+            UIState[2].ESPVisuals_HighlightChamColor = Value
         end})
-        ChamsMenu:AddDropdown("ESPVisuals_ChamRendering", {Text = "Rendering", Default = UIState[2].ESPVisuals_ChamRendering, Values = {"Fill", "Outline"}, Multi = true, Callback = function(Value)
-            UIState[2].ESPVisuals_ChamRendering = Value
+        HighlightChamsMenu:AddDropdown("ESPVisuals_HighlightChamRendering", {Text = "Rendering", Default = UIState[2].ESPVisuals_HighlightChamRendering, Values = {"Fill", "Outline"}, Multi = true, Callback = function(Value)
+            UIState[2].ESPVisuals_HighlightChamRendering = Value
         end})
-        ChamsMenu:AddDropdown("ESPVisuals_ChamStyle", {Text = "Style", Default = UIState[2].ESPVisuals_ChamStyle, Values = {"Solid", "Visible"}, Callback = function(Value)
-            UIState[2].ESPVisuals_ChamStyle = Value
+        HighlightChamsMenu:AddDropdown("ESPVisuals_HighlightChamStyle", {Text = "Style", Default = UIState[2].ESPVisuals_HighlightChamStyle, Values = {"Solid", "Visible"}, Callback = function(Value)
+            UIState[2].ESPVisuals_HighlightChamStyle = Value
         end})
-        ChamsMenu:AddDependencyBox():SetupDependencies({{Options.ESPVisuals_ChamStyle, "Visible"}}):AddLabel("Visible Color"):AddColorPicker("ESPVisuals_ChamVisibleColor", {
-            Default = UIState[2].ESPVisuals_ChamVisibleColor, Title = "Visible Color", Callback = function(Value)
-                UIState[2].ESPVisuals_ChamVisibleColor = Value
+        HighlightChamsMenu:AddDependencyBox():SetupDependencies({{Options.ESPVisuals_HighlightChamStyle, "Visible"}}):AddLabel("Visible Color"):AddColorPicker("ESPVisuals_HighlightChamVisibleColor", {
+            Default = UIState[2].ESPVisuals_HighlightChamVisibleColor, Callback = function(Value)
+                UIState[2].ESPVisuals_HighlightChamVisibleColor = Value
             end
         })
-        ChamsMenu:AddToggle("ESPVisuals_ChamOccluded", {Text = "Occluded", Default = UIState[2].ESPVisuals_ChamOccluded, Callback = function(Value)
-            UIState[2].ESPVisuals_ChamOccluded = Value
+        HighlightChamsMenu:AddToggle("ESPVisuals_HighlightChamOccluded", {Text = "Occluded", Default = UIState[2].ESPVisuals_HighlightChamOccluded, Callback = function(Value)
+            UIState[2].ESPVisuals_HighlightChamOccluded = Value
+        end})
+        HighlightChamsMenu:AddSlider("ESPVisuals_HighlightChamTransparency", {Text = "Transparency", Default = UIState[2].ESPVisuals_HighlightChamTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(Value)
+            UIState[2].ESPVisuals_HighlightChamTransparency = Value
         end})
         ESPVisualsDependencies:AddDivider()
 
         local Skeletons_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Skeletons", {Text = "Skeletons", Default = UIState[2].ESPVisuals_Skeletons, Callback = function(Value)
             UIState[2].ESPVisuals_Skeletons = Value
         end}):AddSettingsMenu("Skeleton Settings")
-        Skeletons_Menu:AddColorPicker("ESPVisuals_SkeletonColor", {Default = UIState[2].ESPVisuals_SkeletonColor, Title = "Skeleton Color", Callback = function(Value)
+        Skeletons_Menu:AddColorPicker("ESPVisuals_SkeletonColor", {Default = UIState[2].ESPVisuals_SkeletonColor, Transparency = UIState[2].ESPVisuals_SkeletonTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_SkeletonColor = Value
+            UIState[2].ESPVisuals_SkeletonTransparency = Transparency
         end})
         Skeletons_Menu:AddSlider("ESPVisuals_SkeletonThickness", {
             Text = "Thickness", Default = UIState[2].ESPVisuals_SkeletonThickness, Min = 1, Max = 3.5, Rounding = 1, Callback = function(Value)
@@ -5497,11 +4361,24 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local HeadTags_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_HeadTags", {Text = "Head Tags", Default = UIState[2].ESPVisuals_HeadTags, Callback = function(Value)
             UIState[2].ESPVisuals_HeadTags = Value
         end}):AddSettingsMenu("Head Tag Settings")
-        HeadTags_Menu:AddColorPicker("ESPVisuals_HeadTagColor", {Default = UIState[2].ESPVisuals_HeadTagColor, Title = "Tag Color", Callback = function(Value)
+        HeadTags_Menu:AddColorPicker("ESPVisuals_HeadTagColor", {Default = UIState[2].ESPVisuals_HeadTagColor, Transparency = UIState[2].ESPVisuals_HeadTagTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_HeadTagColor = Value
+            UIState[2].ESPVisuals_HeadTagTransparency = Transparency
         end})
-        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagElements", {Text = "Elements", Default = UIState[2].ESPVisuals_HeadTagElements, Values = {"Name", "Health", "Distance"}, Multi = true, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagElements = Value
+        HeadTags_Menu:AddToggle("ESPVisuals_HeadTagPixelOffset", {Text = "Pixel Offset", Default = UIState[2].ESPVisuals_HeadTagPixelOffset, Callback = function(Value)
+            UIState[2].ESPVisuals_HeadTagPixelOffset = Value
+        end})
+        HeadTags_Menu:AddDependencyBox():SetupDependencies({{Toggles.ESPVisuals_HeadTagPixelOffset, true}}):AddSlider("ESPVisuals_HeadTagPixelOffsetSize", {Text = "Size", Default = UIState[2].ESPVisuals_HeadTagPixelOffsetSize, Min = -10, Max = 10, Rounding = 0, Suffix = "px", Callback = function(Value)
+            UIState[2].ESPVisuals_HeadTagPixelOffsetSize = Value
+        end})
+        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagStaticElements", {Text = "Static Elements", Default = UIState[2].ESPVisuals_HeadTagStaticElements, Values = {"Name", "Health", "Distance", "Weapon"}, Multi = true, Callback = function(Value)
+            UIState[2].ESPVisuals_HeadTagStaticElements = Value
+        end})
+        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagStatusElements", {Text = "Status Elements", Default = UIState[2].ESPVisuals_HeadTagStatusElements, Values = {"Aiming", "Sprinting", "Crouching", "Prone"}, Multi = true, Callback = function(Value)
+            UIState[2].ESPVisuals_HeadTagStatusElements = Value
+        end})
+        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagPosition", {Text = "Position", Default = UIState[2].ESPVisuals_HeadTagPosition, Values = {"Top", "Bottom", "Left", "Right"}, Callback = function(Value)
+            UIState[2].ESPVisuals_HeadTagPosition = Value
         end})
         HeadTags_Menu:AddSlider("ESPVisuals_HeadTagSize", {Text = "Size", Default = UIState[2].ESPVisuals_HeadTagSize, Min = 8, Max = 20, Rounding = 0, Callback = function(Value)
             UIState[2].ESPVisuals_HeadTagSize = Value
@@ -5512,8 +4389,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local Boxes_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Boxes", {Text = "Boxes", Default = UIState[2].ESPVisuals_Boxes, Callback = function(Value)
             UIState[2].ESPVisuals_Boxes = Value
         end}):AddSettingsMenu("Box Settings")
-        Boxes_Menu:AddColorPicker("ESPVisuals_BoxColor", {Default = UIState[2].ESPVisuals_BoxColor, Title = "Box Color", Callback = function(Value)
+        Boxes_Menu:AddColorPicker("ESPVisuals_BoxColor", {Default = UIState[2].ESPVisuals_BoxColor, Transparency = UIState[2].ESPVisuals_BoxTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_BoxColor = Value
+            UIState[2].ESPVisuals_BoxTransparency = Transparency
         end})
         Boxes_Menu:AddDropdown("ESPVisuals_BoxStyle", {Text = "Style", Default = UIState[2].ESPVisuals_BoxStyle, Values = {"Full", "Corners"}, Callback = function(Value)
             UIState[2].ESPVisuals_BoxStyle = Value
@@ -5533,12 +4411,13 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_HealthbarStyle = Value
         end})
         Healthbars_Menu:AddColorPicker("ESPVisuals_HealthbarColor", {
-            Default = UIState[2].ESPVisuals_HealthbarColor, Title = "Solid Color", Callback = function(Value)
+            Default = UIState[2].ESPVisuals_HealthbarColor, Transparency = UIState[2].ESPVisuals_HealthbarTransparency, Callback = function(Value, Transparency)
                 UIState[2].ESPVisuals_HealthbarColor = Value
+                UIState[2].ESPVisuals_HealthbarTransparency = Transparency
             end
         })
-        Healthbars_Menu:AddDropdown("ESPVisuals_HealthbarSide", {Text = "Side", Default = UIState[2].ESPVisuals_HealthbarSide, Values = {"Left", "Right"}, Callback = function(Value)
-            UIState[2].ESPVisuals_HealthbarSide = Value
+        Healthbars_Menu:AddDropdown("ESPVisuals_HealthbarPosition", {Text = "Position", Default = UIState[2].ESPVisuals_HealthbarPosition, Values = {"Top", "Bottom", "Left", "Right"}, Callback = function(Value)
+            UIState[2].ESPVisuals_HealthbarPosition = Value
         end})
         Healthbars_Menu:AddSlider("ESPVisuals_HealthbarWidth", {
             Text = "Width", Default = UIState[2].ESPVisuals_HealthbarWidth, Min = 2, Max = 5, Rounding = 1, Callback = function(Value)
@@ -5551,11 +4430,15 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local Tracers_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Tracers", {Text = "Tracers", Default = UIState[2].ESPVisuals_Tracers, Callback = function(Value)
             UIState[2].ESPVisuals_Tracers = Value
         end}):AddSettingsMenu("Tracer Settings")
-        Tracers_Menu:AddColorPicker("ESPVisuals_TracerColor", {Default = UIState[2].ESPVisuals_TracerColor, Title = "Tracer Color", Callback = function(Value)
+        Tracers_Menu:AddColorPicker("ESPVisuals_TracerColor", {Default = UIState[2].ESPVisuals_TracerColor, Transparency = UIState[2].ESPVisuals_TracerTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_TracerColor = Value
+            UIState[2].ESPVisuals_TracerTransparency = Transparency
         end})
-        Tracers_Menu:AddDropdown("ESPVisuals_TracerOrigin", {Text = "Origin", Default = UIState[2].ESPVisuals_TracerOrigin, Values = {"Bottom", "Center", "Top"}, Callback = function(Value)
+        Tracers_Menu:AddDropdown("ESPVisuals_TracerOrigin", {Text = "Origin", Default = UIState[2].ESPVisuals_TracerOrigin, Values = {"Top", "Center", "Bottom"}, Callback = function(Value)
             UIState[2].ESPVisuals_TracerOrigin = Value
+        end})
+        Tracers_Menu:AddDropdown("ESPVisuals_TracerPart", {Text = "Part", Default = UIState[2].ESPVisuals_TracerPart, Values = {"Head", "Neck", "Torso"}, Callback = function(Value)
+            UIState[2].ESPVisuals_TracerPart = Value
         end})
         Tracers_Menu:AddSlider("ESPVisuals_TracerThickness", {Text = "Thickness", Default = UIState[2].ESPVisuals_TracerThickness, Min = 1, Max = 5, Rounding = 1, Callback = function(Value)
             UIState[2].ESPVisuals_TracerThickness = Value
@@ -5566,8 +4449,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local OffscreenArrows_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_OffscreenArrows", {Text = "Offscreen Arrows", Default = UIState[2].ESPVisuals_OffscreenArrows, Callback = function(Value)
             UIState[2].ESPVisuals_OffscreenArrows = Value
         end}):AddSettingsMenu("Offscreen Arrow Settings")
-        OffscreenArrows_Menu:AddColorPicker("ESPVisuals_OffscreenArrowColor", {Default = UIState[2].ESPVisuals_OffscreenArrowColor, Title = "Arrow Color", Callback = function(Value)
+        OffscreenArrows_Menu:AddColorPicker("ESPVisuals_OffscreenArrowColor", {Default = UIState[2].ESPVisuals_OffscreenArrowColor, Transparency = UIState[2].ESPVisuals_OffscreenArrowTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_OffscreenArrowColor = Value
+            UIState[2].ESPVisuals_OffscreenArrowTransparency = Transparency
         end})
         OffscreenArrows_Menu:AddToggle("ESPVisuals_OffscreenArrowFilled", {Text = "Filled", Default = UIState[2].ESPVisuals_OffscreenArrowFilled, Callback = function(Value)
             UIState[2].ESPVisuals_OffscreenArrowFilled = Value
@@ -5584,11 +4468,12 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local SoundRingsMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_SoundRings", {Text = "Sound Rings", Default = UIState[2].ESPVisuals_SoundRings, Callback = function(Value)
             UIState[2].ESPVisuals_SoundRings = Value
         end}):AddSettingsMenu("Sound Rings Settings")
-        SoundRingsMenu:AddColorPicker("ESPVisuals_SoundRingsColor", {Default = UIState[2].ESPVisuals_SoundRingsColor, Title = "Ring Color", Callback = function(Value)
+        SoundRingsMenu:AddColorPicker("ESPVisuals_SoundRingsColor", {Default = UIState[2].ESPVisuals_SoundRingsColor, Transparency = UIState[2].ESPVisuals_SoundRingsTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_SoundRingsColor = Value
+            UIState[2].ESPVisuals_SoundRingsTransparency = Transparency
         end})
-        SoundRingsMenu:AddToggle("ESPVisuals_SoundRingsThroughWalls", {Text = "Through Walls", Default = UIState[2].ESPVisuals_SoundRingsThroughWalls, Callback = function(Value)
-            UIState[2].ESPVisuals_SoundRingsThroughWalls = Value
+        SoundRingsMenu:AddToggle("ESPVisuals_SoundRingsOccluded", {Text = "Occluded", Default = UIState[2].ESPVisuals_SoundRingsOccluded, Callback = function(Value)
+            UIState[2].ESPVisuals_SoundRingsOccluded = Value
         end})
         SoundRingsMenu:AddSlider("ESPVisuals_SoundRingsDuration", {Text = "Duration", Default = UIState[2].ESPVisuals_SoundRingsDuration, Min = 0.3, Max = 3, Rounding = 1, Suffix = "s", Callback = function(Value)
             UIState[2].ESPVisuals_SoundRingsDuration = Value
@@ -5598,12 +4483,10 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local GrenadeTags_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_GrenadeTags", {Text = "Grenade Tags", Default = UIState[2].ESPVisuals_GrenadeTags, Callback = function(Value)
             UIState[2].ESPVisuals_GrenadeTags = Value
-            if not Value then
-                table.clear(UIFeatures[1].Grenades)
-            end
         end}):AddSettingsMenu("Grenade Tag Settings")
-        GrenadeTags_Menu:AddColorPicker("ESPVisuals_GrenadeTagColor", {Default = UIState[2].ESPVisuals_GrenadeTagColor, Title = "Grenade Tags Color", Callback = function(Value)
+        GrenadeTags_Menu:AddColorPicker("ESPVisuals_GrenadeTagColor", {Default = UIState[2].ESPVisuals_GrenadeTagColor, Transparency = UIState[2].ESPVisuals_GrenadeTagTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_GrenadeTagColor = Value
+            UIState[2].ESPVisuals_GrenadeTagTransparency = Transparency
         end})
         GrenadeTags_Menu:AddSlider("ESPVisuals_GrenadeTagSize", {
             Text = "Size", Default = UIState[2].ESPVisuals_GrenadeTagSize, Min = 8, Max = 20, Rounding = 0, Callback = function(Value)
@@ -5624,34 +4507,31 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         World_Camera:AddDivider()
 
-        local FOVModificationMenu = World_Camera:AddToggle("Camera_CustomFOV", {Text = "Custom FOV", Default = UIState[2].Camera_CustomFOV, Callback = function(Value)
+        local CustomFOVMenu = World_Camera:AddToggle("Camera_CustomFOV", {Text = "Custom Field Of View", Default = UIState[2].Camera_CustomFOV, Callback = function(Value)
             UIState[2].Camera_CustomFOV = Value
-        end}):AddSettingsMenu("Custom FOV Settings")
-        FOVModificationMenu:AddToggle("Camera_ApplyToAim", {Text = "Apply to Aim", Default = UIState[2].Camera_ApplyToAim, Callback = function(Value)
+        end}):AddSettingsMenu("Field Of View Settings")
+        CustomFOVMenu:AddToggle("Camera_ApplyToAim", {Text = "Apply to Aim", Default = UIState[2].Camera_ApplyToAim, Callback = function(Value)
             UIState[2].Camera_ApplyToAim = Value
         end})
-        FOVModificationMenu:AddSlider("Camera_FOVValue", {
+        CustomFOVMenu:AddSlider("Camera_FOVValue", {
             Text = "FOV Value", Default = UIState[2].Camera_FOVValue, Min = 30, Max = 120, Rounding = 0, Callback = function(Value)
                 UIState[2].Camera_FOVValue = Value
             end
         })
 
-        World_Camera:AddDivider()
-
         local ThirdPersonMenu = World_Camera:AddToggle("Camera_ThirdPerson", {Text = "Third Person", Default = UIState[2].Camera_ThirdPerson, Callback = function(Value)
             UIState[2].Camera_ThirdPerson = Value
+            UIFeatures[5]:Refresh()
         end}):AddSettingsMenu("Third Person Settings")
         ThirdPersonMenu:AddKeyPicker("Camera_ThirdPersonKeybind", {
-            Default = UIState[2].Camera_ThirdPersonKeybind, Mode = "Toggle", Text = "Third Person", SyncToggleState = true, ChangedCallback = function(Keybind)
-                UIState[2].Camera_ThirdPersonKeybind = Keybind
-            end, Callback = function(Value)
-                if type(Value) == "boolean" then
-                    Toggles.Camera_ThirdPerson:SetValue(Value)
-                end
-            end
+            Default = "None", Mode = "Toggle", Text = "Third Person", SyncToggleState = true
         })
         ThirdPersonMenu:AddToggle("Camera_ThirdPersonCameraCollision", {Text = "Camera Collision", Default = UIState[2].Camera_ThirdPersonCameraCollision, Callback = function(Value)
             UIState[2].Camera_ThirdPersonCameraCollision = Value
+        end})
+        ThirdPersonMenu:AddToggle("Camera_ThirdPersonHideViewModel", {Text = "Hide ViewModel", Default = UIState[2].Camera_ThirdPersonHideViewModel, Callback = function(Value)
+            UIState[2].Camera_ThirdPersonHideViewModel = Value
+            UIFeatures[5]:Refresh()
         end})
         ThirdPersonMenu:AddSlider("Camera_ThirdPersonOffsetX", {Text = "Offset X", Default = UIState[2].Camera_ThirdPersonOffsetX, Min = -20, Max = 20, Rounding = 0, Callback = function(Value)
             UIState[2].Camera_ThirdPersonOffsetX = Value
@@ -5665,112 +4545,111 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         ThirdPersonMenu:AddToggle("Camera_ThirdPersonShowCharacter", {Text = "Show Character", Default = UIState[2].Camera_ThirdPersonShowCharacter, Callback = function(Value)
             UIState[2].Camera_ThirdPersonShowCharacter = Value
         end})
-        ThirdPersonMenu:AddDependencyBox():SetupDependencies({{Toggles.Camera_ThirdPersonShowCharacter, true}}):AddToggle("Camera_ThirdPersonHideCharacterWhileAiming", {Text = "Hide Character While Aiming", Default = UIState[2].Camera_ThirdPersonHideCharacterWhileAiming, Callback = function(Value)
+        local ThirdPersonCharacterSettings = ThirdPersonMenu:AddDependencyBox():SetupDependencies({{Toggles.Camera_ThirdPersonShowCharacter, true}})
+        ThirdPersonCharacterSettings:AddToggle("Camera_ThirdPersonGhostCharacter", {Text = "Ghost Character", Default = UIState[2].Camera_ThirdPersonGhostCharacter, Callback = function(Value)
+            UIState[2].Camera_ThirdPersonGhostCharacter = Value
+        end})
+        ThirdPersonCharacterSettings:AddToggle("Camera_ThirdPersonHideCharacterWhileAiming", {Text = "Hide Character While Aiming", Default = UIState[2].Camera_ThirdPersonHideCharacterWhileAiming, Callback = function(Value)
             UIState[2].Camera_ThirdPersonHideCharacterWhileAiming = Value
         end})
 
-        local LightingModificationMenu = World_Lighting:AddToggle("Lighting_Custom", {Text = "Custom Lighting", Default = UIState[2].Lighting_Custom, Callback = function(Value)
+        local CustomLightingMenu = World_Lighting:AddToggle("Lighting_Custom", {Text = "Custom Lighting", Default = UIState[2].Lighting_Custom, Callback = function(Value)
             UIState[2].Lighting_Custom = Value
             if not Value then
-                for Connection in next, UIFeatures[2].Connections do
+                for Connection in next, UIFeatures[1].Connections do
                     Connection:Disconnect()
                 end
-                table.clear(UIFeatures[2].Connections)
-                UIFeatures[4](true)
-                return
+                table.clear(UIFeatures[1].Connections)
+                return UIFeatures[3](true)
             end
 
-            for Property in next, UIFeatures[2].OriginalValues do
-                UIFeatures[2].OriginalValues[Property] = GameData[2][Property]
+            for Property in next, UIFeatures[1].OriginalValues do
+                UIFeatures[1].OriginalValues[Property] = GameData[2][Property]
             end
 
-            for Connection in next, UIFeatures[2].Connections do
+            for Connection in next, UIFeatures[1].Connections do
                 Connection:Disconnect()
             end
-            table.clear(UIFeatures[2].Connections)
+            table.clear(UIFeatures[1].Connections)
 
             local Properties = {"Ambient", "OutdoorAmbient", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "ShadowSoftness", "LightingStyle"}
             for _,Property in ipairs(Properties) do
-                UIFeatures[2].Connections[GameData[2]:GetPropertyChangedSignal(Property):Connect(function()
+                UIFeatures[1].Connections[GameData[2]:GetPropertyChangedSignal(Property):Connect(function()
                     local Current = GameData[2][Property]
-                    UIFeatures[4](false)
+                    UIFeatures[3](false)
                     if GameData[2][Property] ~= Current then
-                        UIFeatures[2].OriginalValues[Property] = Current
-                        UIFeatures[4](false)
+                        UIFeatures[1].OriginalValues[Property] = Current
+                        UIFeatures[3](false)
                     end
                 end)] = true
             end
 
-            UIFeatures[4](false)
+            UIFeatures[3](false)
         end}):AddSettingsMenu("Custom Lighting Settings")
-        LightingModificationMenu:AddSlider("Lighting_ExposureCompensation", {Text = "Exposure Compensation", Default = UIState[2].Lighting_ExposureCompensation, Min = -5, Max = 5, Rounding = 1, Callback = function(Value)
+        CustomLightingMenu:AddSlider("Lighting_ExposureCompensation", {Text = "Exposure Compensation", Default = UIState[2].Lighting_ExposureCompensation, Min = -5, Max = 5, Rounding = 1, Callback = function(Value)
             UIState[2].Lighting_ExposureCompensation = Value
             if UIState[2].Lighting_Custom then
                 GameData[2].ExposureCompensation = Value
             end
         end})
-        LightingModificationMenu:AddLabel("Ambient"):AddColorPicker("Lighting_Ambient", {Default = UIState[2].Lighting_Ambient, Title = "Ambient Color", Callback = function(Value)
+        CustomLightingMenu:AddLabel("Ambient"):AddColorPicker("Lighting_Ambient", {Default = UIState[2].Lighting_Ambient, Callback = function(Value)
             UIState[2].Lighting_Ambient = Value
             if UIState[2].Lighting_Custom then
                 GameData[2].Ambient = Value
             end
         end})
-        LightingModificationMenu:AddLabel("Outdoor Ambient"):AddColorPicker("Lighting_OutdoorAmbient", {Default = UIState[2].Lighting_OutdoorAmbient, Title = "Outdoor Ambient", Callback = function(Value)
+        CustomLightingMenu:AddLabel("Outdoor Ambient"):AddColorPicker("Lighting_OutdoorAmbient", {Default = UIState[2].Lighting_OutdoorAmbient, Callback = function(Value)
             UIState[2].Lighting_OutdoorAmbient = Value
             if UIState[2].Lighting_Custom then
                 GameData[2].OutdoorAmbient = Value
             end
         end})
-        LightingModificationMenu:AddSlider("Lighting_EnvironmentDiffuseScale", {Text = "Diffuse Scale", Default = UIState[2].Lighting_EnvironmentDiffuseScale, Min = 0, Max = 1, Rounding = 1, Callback = function(Value)
+        CustomLightingMenu:AddSlider("Lighting_EnvironmentDiffuseScale", {Text = "Diffuse Scale", Default = UIState[2].Lighting_EnvironmentDiffuseScale, Min = 0, Max = 1, Rounding = 1, Callback = function(Value)
             UIState[2].Lighting_EnvironmentDiffuseScale = Value
             if UIState[2].Lighting_Custom then
                 GameData[2].EnvironmentDiffuseScale = Value
             end
         end})
-        LightingModificationMenu:AddSlider("Lighting_EnvironmentSpecularScale", {Text = "Specular Scale", Default = UIState[2].Lighting_EnvironmentSpecularScale, Min = 0, Max = 1, Rounding = 1, Callback = function(Value)
+        CustomLightingMenu:AddSlider("Lighting_EnvironmentSpecularScale", {Text = "Specular Scale", Default = UIState[2].Lighting_EnvironmentSpecularScale, Min = 0, Max = 1, Rounding = 1, Callback = function(Value)
             UIState[2].Lighting_EnvironmentSpecularScale = Value
             if UIState[2].Lighting_Custom then
                 GameData[2].EnvironmentSpecularScale = Value
             end
         end})
-        LightingModificationMenu:AddSlider("Lighting_ShadowSoftness", {Text = "Shadow Softness", Default = UIState[2].Lighting_ShadowSoftness, Min = 0, Max = 1, Rounding = 1, Callback = function(Value)
+        CustomLightingMenu:AddSlider("Lighting_ShadowSoftness", {Text = "Shadow Softness", Default = UIState[2].Lighting_ShadowSoftness, Min = 0, Max = 1, Rounding = 1, Callback = function(Value)
             UIState[2].Lighting_ShadowSoftness = Value
             if UIState[2].Lighting_Custom then
                 GameData[2].ShadowSoftness = Value
             end
         end})
 
-        World_Lighting:AddDivider()
-
         local BloomMenu = World_Lighting:AddToggle("Lighting_Bloom", {Text = "Bloom", Default = UIState[2].Lighting_Bloom, Callback = function(Value)
             UIState[2].Lighting_Bloom = Value
-            UIFeatures[5]()
+            UIFeatures[4]()
         end}):AddSettingsMenu("Bloom Settings")
         BloomMenu:AddSlider("Lighting_BloomIntensity", {
             Text = "Intensity", Default = UIState[2].Lighting_BloomIntensity, Min = 0, Max = 2, Rounding = 2, Callback = function(Value)
                 UIState[2].Lighting_BloomIntensity = Value
-                UIFeatures[5]()
+                UIFeatures[4]()
             end
         })
         BloomMenu:AddSlider("Lighting_BloomSize", {
             Text = "Size", Default = UIState[2].Lighting_BloomSize, Min = 1, Max = 56, Rounding = 0, Callback = function(Value)
                 UIState[2].Lighting_BloomSize = Value
-                UIFeatures[5]()
+                UIFeatures[4]()
             end
         })
         BloomMenu:AddSlider("Lighting_BloomThreshold", {
             Text = "Threshold", Default = UIState[2].Lighting_BloomThreshold, Min = 0, Max = 2, Rounding = 2, Callback = function(Value)
                 UIState[2].Lighting_BloomThreshold = Value
-                UIFeatures[5]()
+                UIFeatures[4]()
             end
         })
-
-        World_Lighting:AddDivider()
 
         local FlashlightMenu = World_Lighting:AddToggle("Lighting_Flashlight", {Text = "Flashlight", Default = UIState[2].Lighting_Flashlight, Callback = function(Value)
             UIState[2].Lighting_Flashlight = Value
         end}):AddSettingsMenu("Flashlight Settings")
-        FlashlightMenu:AddColorPicker("Lighting_FlashlightColor", {Default = UIState[2].Lighting_FlashlightColor, Title = "Flashlight Color", Callback = function(Value)
+        FlashlightMenu:AddColorPicker("Lighting_FlashlightColor", {Default = UIState[2].Lighting_FlashlightColor, Callback = function(Value)
             UIState[2].Lighting_FlashlightColor = Value
         end})
         FlashlightMenu:AddSlider("Lighting_FlashlightBrightness", {Text = "Brightness", Default = UIState[2].Lighting_FlashlightBrightness, Min = 0, Max = 10, Rounding = 1, Callback = function(Value)
@@ -5785,41 +4664,57 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local WeaponChamsMenu = World_ViewModel:AddToggle("ViewModel_WeaponChams", {Text = "Weapon Chams", Default = UIState[2].ViewModel_WeaponChams, Callback = function(Value)
             UIState[2].ViewModel_WeaponChams = Value
-            UIFeatures[6]:Refresh()
+            UIFeatures[5]:Refresh()
         end}):AddSettingsMenu("Weapon Cham Settings")
-        WeaponChamsMenu:AddColorPicker("ViewModel_WeaponChamColor", {Default = UIState[2].ViewModel_WeaponChamColor, Title = "Chams Color", Callback = function(Value)
+        WeaponChamsMenu:AddColorPicker("ViewModel_WeaponChamColor", {Default = UIState[2].ViewModel_WeaponChamColor, Callback = function(Value)
             UIState[2].ViewModel_WeaponChamColor = Value
-            UIFeatures[6]:Refresh()
+            UIFeatures[5]:Refresh()
+        end})
+        WeaponChamsMenu:AddToggle("ViewModel_WeaponChamIgnoreSightParts", {Text = "Ignore Sight Parts", Default = UIState[2].ViewModel_WeaponChamIgnoreSightParts, Callback = function(Value)
+            UIState[2].ViewModel_WeaponChamIgnoreSightParts = Value
+            UIFeatures[5]:Refresh()
         end})
         WeaponChamsMenu:AddDropdown("ViewModel_WeaponChamType", {Text = "Type", Default = UIState[2].ViewModel_WeaponChamType, Values = {"ForceField", "Neon", "Glass", "SmoothPlastic"}, Callback = function(Value)
             UIState[2].ViewModel_WeaponChamType = Value
-            UIFeatures[6]:Refresh()
+            UIFeatures[5]:Refresh()
         end})
-        WeaponChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_WeaponChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddToggle("ViewModel_WeaponChamTranslucent", {Text = "Translucent", Default = UIState[2].ViewModel_WeaponChamTranslucent, Callback = function(Value)
-            UIState[2].ViewModel_WeaponChamTranslucent = Value
-            UIFeatures[6]:Refresh()
+        WeaponChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_WeaponChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddSlider("ViewModel_WeaponChamTransparency", {Text = "Transparency", Default = UIState[2].ViewModel_WeaponChamTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(Value)
+            UIState[2].ViewModel_WeaponChamTransparency = Value
+            UIFeatures[5]:Refresh()
         end})
 
         local ArmChamsMenu = World_ViewModel:AddToggle("ViewModel_ArmChams", {Text = "Arm Chams", Default = UIState[2].ViewModel_ArmChams, Callback = function(Value)
             UIState[2].ViewModel_ArmChams = Value
-            UIFeatures[6]:Refresh()
+            UIFeatures[5]:Refresh()
         end}):AddSettingsMenu("Arm Cham Settings")
-        ArmChamsMenu:AddColorPicker("ViewModel_ArmChamColor", {Default = UIState[2].ViewModel_ArmChamColor, Title = "Chams Color", Callback = function(Value)
+        ArmChamsMenu:AddColorPicker("ViewModel_ArmChamColor", {Default = UIState[2].ViewModel_ArmChamColor, Callback = function(Value)
             UIState[2].ViewModel_ArmChamColor = Value
-            UIFeatures[6]:Refresh()
+            UIFeatures[5]:Refresh()
         end})
         ArmChamsMenu:AddDropdown("ViewModel_ArmChamType", {Text = "Type", Default = UIState[2].ViewModel_ArmChamType, Values = {"ForceField", "Neon", "Glass", "SmoothPlastic"}, Callback = function(Value)
             UIState[2].ViewModel_ArmChamType = Value
-            UIFeatures[6]:Refresh()
+            UIFeatures[5]:Refresh()
         end})
-        ArmChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_ArmChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddToggle("ViewModel_ArmChamTranslucent", {Text = "Translucent", Default = UIState[2].ViewModel_ArmChamTranslucent, Callback = function(Value)
-            UIState[2].ViewModel_ArmChamTranslucent = Value
-            UIFeatures[6]:Refresh()
+        ArmChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_ArmChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddSlider("ViewModel_ArmChamTransparency", {Text = "Transparency", Default = UIState[2].ViewModel_ArmChamTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(Value)
+            UIState[2].ViewModel_ArmChamTransparency = Value
+            UIFeatures[5]:Refresh()
         end})
 
-        World_ViewModel:AddToggle("ViewModel_NoSleeves", {Text = "No Sleeves", Default = UIState[2].ViewModel_NoSleeves, Callback = function(Value)
-            UIState[2].ViewModel_NoSleeves = Value
-            UIFeatures[6]:Refresh()
+        local SleeveChamsMenu = World_ViewModel:AddToggle("ViewModel_SleeveChams", {Text = "Sleeve Chams", Default = UIState[2].ViewModel_SleeveChams, Callback = function(Value)
+            UIState[2].ViewModel_SleeveChams = Value
+            UIFeatures[5]:Refresh()
+        end}):AddSettingsMenu("Sleeve Cham Settings")
+        SleeveChamsMenu:AddColorPicker("ViewModel_SleeveChamColor", {Default = UIState[2].ViewModel_SleeveChamColor, Callback = function(Value)
+            UIState[2].ViewModel_SleeveChamColor = Value
+            UIFeatures[5]:Refresh()
+        end})
+        SleeveChamsMenu:AddDropdown("ViewModel_SleeveChamType", {Text = "Type", Default = UIState[2].ViewModel_SleeveChamType, Values = {"ForceField", "Neon", "Glass", "SmoothPlastic"}, Callback = function(Value)
+            UIState[2].ViewModel_SleeveChamType = Value
+            UIFeatures[5]:Refresh()
+        end})
+        SleeveChamsMenu:AddDependencyBox():SetupDependencies({{Options.ViewModel_SleeveChamType, {"Neon", "Glass", "SmoothPlastic"}}}):AddSlider("ViewModel_SleeveChamTransparency", {Text = "Transparency", Default = UIState[2].ViewModel_SleeveChamTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(Value)
+            UIState[2].ViewModel_SleeveChamTransparency = Value
+            UIFeatures[5]:Refresh()
         end})
 
         World_ViewModel:AddDivider()
@@ -5859,8 +4754,8 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         })
     end
 
-    local function MiscellaneousTab()
-        local Miscellaneous_WeaponMods = Tabs.Miscellaneous:AddLeftGroupbox("Weapon Mods")
+    local function Build_MiscellaneousTab()
+        local Miscellaneous_WeaponMods = MiscellaneousTab:AddLeftGroupbox("Weapon Mods")
 
         Miscellaneous_WeaponMods:AddToggle("WeaponMods_AutomaticGun", {Text = "Automatic Gun", Default = UIState[3].WeaponMods_AutomaticGun, Callback = function(Value)
             UIState[3].WeaponMods_AutomaticGun = Value
@@ -5877,6 +4772,16 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[3].WeaponMods_SpreadAdjustment = Value
             end
         })
+
+        Miscellaneous_WeaponMods:AddDivider()
+
+        Miscellaneous_WeaponMods:AddToggle("WeaponMods_InstantBullet", {Text = "Instant Bullet [EXPERIMENTAL]", Default = UIState[3].WeaponMods_InstantBullet, Callback = function(Value)
+            UIState[3].WeaponMods_InstantBullet = Value
+        end})
+
+        Miscellaneous_WeaponMods:AddToggle("WeaponMods_RapidFire", {Text = "Rapid Fire [EXPERIMENTAL]", Default = UIState[3].WeaponMods_RapidFire, Callback = function(Value)
+            UIState[3].WeaponMods_RapidFire = Value
+        end})
 
         Miscellaneous_WeaponMods:AddDivider()
 
@@ -5929,22 +4834,16 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local CustomMuzzleFlashMenu = Miscellaneous_WeaponMods:AddToggle("WeaponMods_CustomMuzzleFlash", {Text = "Custom Muzzle Flash", Default = UIState[3].WeaponMods_CustomMuzzleFlash, Callback = function(Value)
             UIState[3].WeaponMods_CustomMuzzleFlash = Value
         end}):AddSettingsMenu("Muzzle Flash Settings")
-        CustomMuzzleFlashMenu:AddColorPicker("WeaponMods_MuzzleFlashColor", {Default = UIState[3].WeaponMods_MuzzleFlashColor, Title = "Flash Color", Callback = function(Value)
+        CustomMuzzleFlashMenu:AddColorPicker("WeaponMods_MuzzleFlashColor", {Default = UIState[3].WeaponMods_MuzzleFlashColor, Callback = function(Value)
             UIState[3].WeaponMods_MuzzleFlashColor = Value
         end})
-        CustomMuzzleFlashMenu:AddDropdown("WeaponMods_MuzzleFlashMaterial", {Text = "Material", Default = UIState[3].WeaponMods_MuzzleFlashMaterial, Values = {"SmoothPlastic", "Neon", "Glass"}, Callback = function(Value)
-            UIState[3].WeaponMods_MuzzleFlashMaterial = Value
-        end})
         CustomMuzzleFlashMenu:AddSlider("WeaponMods_MuzzleFlashSize", {
-            Text = "Size", Default = UIState[3].WeaponMods_MuzzleFlashSize, Min = 0.2, Max = 3, Rounding = 1, Suffix = "x", Callback = function(Value)
+            Text = "Size", Default = UIState[3].WeaponMods_MuzzleFlashSize, Min = 0.1, Max = 3, Rounding = 1, Suffix = "x", Callback = function(Value)
                 UIState[3].WeaponMods_MuzzleFlashSize = Value
             end
         })
-        CustomMuzzleFlashMenu:AddToggle("WeaponMods_MuzzleFlashLocalOnly", {Text = "Local Only", Default = UIState[3].WeaponMods_MuzzleFlashLocalOnly, Callback = function(Value)
-            UIState[3].WeaponMods_MuzzleFlashLocalOnly = Value
-        end})
 
-        local HitLogsMenu = Tabs.Miscellaneous:AddLeftGroupbox("Hit Logs"):AddToggle("HitLogs_Enabled", {Text = "Enabled", Default = UIState[3].HitLogs_Enabled, Callback = function(Value)
+        local HitLogsMenu = MiscellaneousTab:AddLeftGroupbox("Hit Logs"):AddToggle("HitLogs_Enabled", {Text = "Enabled", Default = UIState[3].HitLogs_Enabled, Callback = function(Value)
             UIState[3].HitLogs_Enabled = Value
         end}):AddSettingsMenu("Hit Log Settings")
         HitLogsMenu:AddToggle("HitLogs_ShowDamage", {Text = "Show Damage", Default = UIState[3].HitLogs_ShowDamage, Callback = function(Value)
@@ -5959,34 +4858,28 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local function PlaySound(Value)
             if Value ~= "None"  then
-                task.spawn(UIFeatures[9], UIFeatures[7][Value], 1, 1)
+                task.spawn(UIFeatures[8], UIFeatures[6][Value], 1, 1)
             end
         end
 
-        local SoundOverride_Groupbox = Tabs.Miscellaneous:AddLeftGroupbox("Sound Override")
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[10], Callback = function(Value)
+        local SoundOverride_Groupbox = MiscellaneousTab:AddLeftGroupbox("Sound Override")
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {CallbackOnSameValue = true, Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[9], Callback = function(Value)
             UIState[3].SoundOverride_ShootSound = Value
             PlaySound(Value)
         end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[10], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {CallbackOnSameValue = true, Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[9], Callback = function(Value)
             UIState[3].SoundOverride_HitSound = Value
             PlaySound(Value)
         end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[10], Callback = function(Value)
+        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {CallbackOnSameValue = true, Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[9], Callback = function(Value)
             UIState[3].SoundOverride_KillSound = Value
             PlaySound(Value)
         end})
 
-        local Miscellaneous_KnifeAura = Tabs.Miscellaneous:AddRightGroupbox("Knife Aura")
+        local Miscellaneous_KnifeAura = MiscellaneousTab:AddRightGroupbox("Knife Aura")
         Miscellaneous_KnifeAura:AddToggle("KnifeAura_Enabled", {Text = "Enabled", Default = UIState[3].KnifeAura_Enabled, Callback = function(Value)
             UIState[3].KnifeAura_Enabled = Value
-        end}):AddKeyPicker("KnifeAura_Keybind", {Default = UIState[3].KnifeAura_Keybind, Mode = "Toggle", Text = "Knife Aura", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[3].KnifeAura_Keybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.KnifeAura_Enabled:SetValue(Value)
-            end
-        end})
+        end}):AddKeyPicker("KnifeAura_Keybind", {Default = "None", Mode = "Toggle", Text = "Knife Aura", SyncToggleState = true})
 
         local KnifeAuraDependencyBox = Miscellaneous_KnifeAura:AddDependencyBox():SetupDependencies({{Toggles.KnifeAura_Enabled, true}})
         KnifeAuraDependencyBox:AddDropdown("KnifeAura_Part", {Text = "Part", Default = UIState[3].KnifeAura_Part, Values = {"Head", "Torso", "Random"}, Callback = function(Value)
@@ -6006,63 +4899,44 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        local Miscellaneous_Movement = Tabs.Miscellaneous:AddRightGroupbox("Movement")
+        local Miscellaneous_Movement = MiscellaneousTab:AddRightGroupbox("Movement")
+        Miscellaneous_Movement:AddToggle("Movement_NoSlideCooldown", {Text = "No Slide Cooldown", Default = UIState[3].Movement_NoSlideCooldown, Callback = function(Value)
+            UIState[3].Movement_NoSlideCooldown = Value
+        end})
         Miscellaneous_Movement:AddToggle("Movement_NoFallDamage", {Text = "No Fall Damage", Default = UIState[3].Movement_NoFallDamage, Callback = function(Value)
             UIState[3].Movement_NoFallDamage = Value
         end})
         Miscellaneous_Movement:AddToggle("Movement_BunnyHop", {Text = "Bunny Hop [May Despawn]", Default = UIState[3].Movement_BunnyHop, Callback = function(Value)
             UIState[3].Movement_BunnyHop = Value
-        end}):AddKeyPicker("Movement_BunnyHopKeybind", {Default = UIState[3].Movement_BunnyHopKeybind, Mode = "Toggle", Text = "Bunny Hop", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[3].Movement_BunnyHopKeybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.Movement_BunnyHop:SetValue(Value)
-            end
-        end})
-        Miscellaneous_Movement:AddToggle("Movement_NoSlideCooldown", {Text = "No Slide Cooldown", Default = UIState[3].Movement_NoSlideCooldown, Callback = function(Value)
-            UIState[3].Movement_NoSlideCooldown = Value
-        end})
-        Miscellaneous_Movement:AddToggle("Movement_Speed", {Text = "Speed", Default = UIState[3].Movement_Speed, Callback = function(Value)
-            UIState[3].Movement_Speed = Value
-        end})
-
-        local SpeedMenu = Toggles.Movement_Speed:AddSettingsMenu("Speed Settings")
-        SpeedMenu:AddKeyPicker("Movement_SpeedKeybind", {Default = UIState[3].Movement_SpeedKeybind, Mode = "Toggle", Text = "Speed", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[3].Movement_SpeedKeybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.Movement_Speed:SetValue(Value)
-            end
-        end})
-        SpeedMenu:AddSlider("Movement_SpeedAmount", {Text = "Amount", Default = UIState[3].Movement_SpeedAmount, Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
-            UIState[3].Movement_SpeedAmount = Value
-        end})
+        end}):AddKeyPicker("Movement_BunnyHopKeybind", {Default = "None", Mode = "Toggle", Text = "Bunny Hop", SyncToggleState = true})
         Miscellaneous_Movement:AddToggle("Movement_Fly", {Text = "Fly [May Despawn]", Default = UIState[3].Movement_Fly, Callback = function(Value)
             UIState[3].Movement_Fly = Value
         end})
 
         local FlyMenu = Toggles.Movement_Fly:AddSettingsMenu("Fly Settings")
-        FlyMenu:AddKeyPicker("Movement_FlyKeybind", {Default = UIState[3].Movement_FlyKeybind, Mode = "Toggle", Text = "Fly", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[3].Movement_FlyKeybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.Movement_Fly:SetValue(Value)
-            end
-        end})
+        FlyMenu:AddKeyPicker("Movement_FlyKeybind", {Default = "None", Mode = "Toggle", Text = "Fly", SyncToggleState = true})
         FlyMenu:AddSlider("Movement_FlySpeed", {Text = "Speed", Default = UIState[3].Movement_FlySpeed, Min = 0, Max = 50, Rounding = 0, Callback = function(Value)
             UIState[3].Movement_FlySpeed = Value
         end})
 
-        local Miscellaneous_AntiAim = Tabs.Miscellaneous:AddRightGroupbox("Anti Aim")
+        Miscellaneous_Movement:AddToggle("Movement_Speed", {Text = "Speed", Default = UIState[3].Movement_Speed, Callback = function(Value)
+            UIState[3].Movement_Speed = Value
+        end})
+
+        local SpeedMenu = Toggles.Movement_Speed:AddSettingsMenu("Speed Settings")
+        SpeedMenu:AddKeyPicker("Movement_SpeedKeybind", {Default = "None", Mode = "Toggle", Text = "Speed", SyncToggleState = true})
+        SpeedMenu:AddSlider("Movement_SpeedAmount", {Text = "Amount", Default = UIState[3].Movement_SpeedAmount, Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
+            UIState[3].Movement_SpeedAmount = Value
+        end})
+
+        Miscellaneous_Movement:AddToggle("Movement_InfiniteStamina", {Text = "Infinite Stamina", Default = UIState[3].Movement_InfiniteStamina, Callback = function(Value)
+            UIState[3].Movement_InfiniteStamina = Value
+        end})
+
+        local Miscellaneous_AntiAim = MiscellaneousTab:AddRightGroupbox("Anti Aim")
         Miscellaneous_AntiAim:AddToggle("AntiAim_Enabled", {Text = "Enabled", Default = UIState[3].AntiAim_Enabled, Callback = function(Value)
             UIState[3].AntiAim_Enabled = Value
-        end}):AddKeyPicker("AntiAim_Keybind", {Default = UIState[3].AntiAim_Keybind, Mode = "Toggle", Text = "Anti Aim", SyncToggleState = true, ChangedCallback = function(Keybind)
-            UIState[3].AntiAim_Keybind = Keybind
-        end, Callback = function(Value)
-            if type(Value) == "boolean" then
-                Toggles.AntiAim_Enabled:SetValue(Value)
-            end
-        end})
+        end}):AddKeyPicker("AntiAim_Keybind", {Default = "None", Mode = "Toggle", Text = "Anti Aim", SyncToggleState = true})
 
         local AntiAimDependencyBox = Miscellaneous_AntiAim:AddDependencyBox():SetupDependencies({{Toggles.AntiAim_Enabled, true}})
         AntiAimDependencyBox:AddToggle("AntiAim_Yaw", {Text = "Yaw", Default = UIState[3].AntiAim_Yaw, Callback = function(Value)
@@ -6074,7 +4948,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[3].AntiAim_YawMode = Value
         end})
         YawMenu:AddDependencyBox():SetupDependencies({{Options.AntiAim_YawMode, {"Custom - Relative", "Custom - Absolute"}}}):AddSlider("AntiAim_YawAmount", {
-            Text = "Amount", Default = UIState[3].AntiAim_YawAmount, Min = 0, Max = 360, Rounding = 0, Callback = function(Value)
+            Text = "Amount", Default = UIState[3].AntiAim_YawAmount, Min = -180, Max = 360, Rounding = 0, Callback = function(Value)
                 UIState[3].AntiAim_YawAmount = Value
             end
         })
@@ -6092,7 +4966,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[3].AntiAim_PitchMode = Value
         end})
         PitchMenu:AddDependencyBox():SetupDependencies({{Options.AntiAim_PitchMode, {"Custom - Relative", "Custom - Absolute"}}}):AddSlider("AntiAim_PitchAmount", {
-            Text = "Amount", Default = UIState[3].AntiAim_PitchAmount, Min = 0, Max = 180, Rounding = 0, Callback = function(Value)
+            Text = "Amount", Default = UIState[3].AntiAim_PitchAmount, Min = -180, Max = 180, Rounding = 0, Callback = function(Value)
                 UIState[3].AntiAim_PitchAmount = Value
             end
         })
@@ -6122,7 +4996,26 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[3].AntiAim_SpinSpeed = Value
         end})
 
-        local Miscellaneous_ClientSessionUnlocks = Tabs.Miscellaneous:AddRightGroupbox("Client Session Unlocks")
+        local FakeLagMenu = AntiAimDependencyBox:AddToggle("AntiAim_FakeLag", {Text = "Fake Lag", Default = UIState[3].AntiAim_FakeLag, Callback = function(Value)
+            UIState[3].AntiAim_FakeLag = Value
+        end}):AddSettingsMenu("Fake Lag Settings")
+        FakeLagMenu:AddSlider("AntiAim_FakeLagRefreshDistance", {Text = "Refresh Distance", Default = UIState[3].AntiAim_FakeLagRefreshDistance, Min = 0, Max = 8.9, Rounding = 1, Suffix = " studs", Callback = function(Value)
+            UIState[3].AntiAim_FakeLagRefreshDistance = Value
+        end})
+        FakeLagMenu:AddSlider("AntiAim_FakeLagRefreshRate", {Text = "Refresh Rate", Default = UIState[3].AntiAim_FakeLagRefreshRate, Min = 0, Max = 10, Rounding = 0, Suffix = "s", Callback = function(Value)
+            UIState[3].AntiAim_FakeLagRefreshRate = Value
+        end})
+        FakeLagMenu:AddToggle("AntiAim_FakeLagRandomizePosition", {Text = "Randomize Position", Default = UIState[3].AntiAim_FakeLagRandomizePosition, Callback = function(Value)
+            UIState[3].AntiAim_FakeLagRandomizePosition = Value
+        end})
+        local RandomizePositionBox = FakeLagMenu:AddDependencyBox():SetupDependencies({{Toggles.AntiAim_FakeLagRandomizePosition, true}})
+        RandomizePositionBox:AddSlider("AntiAim_FakeLagX", {Text = "X-Axis", Default = UIState[3].AntiAim_FakeLagX, Min = 0, Max = 8.9, Rounding = 1, Suffix = " studs", Callback = function(Value)
+            UIState[3].AntiAim_FakeLagX = Value
+        end})
+        RandomizePositionBox:AddSlider("AntiAim_FakeLagZ", {Text = "Z-Axis", Default = UIState[3].AntiAim_FakeLagZ, Min = 0, Max = 8.9, Rounding = 1, Suffix = " studs", Callback = function(Value)
+            UIState[3].AntiAim_FakeLagZ = Value
+        end})
+        local Miscellaneous_ClientSessionUnlocks = MiscellaneousTab:AddRightGroupbox("Client Session Unlocks")
         Miscellaneous_ClientSessionUnlocks:AddButton({Text = "Unlock Attachments", Func = function()
             UIState[3].ClientSessionUnlocks_AttachmentsUnlocked = true
         end})
@@ -6153,19 +5046,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         end})
         Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "As of 9/19/2026, these Unlocks are undetected, use at your own risk.\n1. These Unlocks only last for the current session and are only visible to you, not others.\n2. Dropping Unlocked weapons makes it lose any Unlocked Add-Ons meaning you'll need to respawn to have the Add-Ons again.\n3. Dropping an Unlocked Knife in a match will make it dissapear.")
 
-        local function BreakAllWindows()
-            local CameraPosition = GameData[1].CFrame.Position
-            for _,Descendant in next, workspace:QueryDescendants("BasePart#Window") do
-                if Descendant.Position ~= CameraPosition then
-                    UIFeatures[8](Descendant, Descendant.Position, (Descendant.Position - CameraPosition).Unit)
-                end
-            end
-        end
-
-        local Miscellaneous_Extras = Tabs.Miscellaneous:AddRightGroupbox("Extras")
-        Miscellaneous_Extras:AddButton({Text = "Break All Windows", Func = BreakAllWindows})
-        Miscellaneous_Extras:AddToggle("Extras_LoopBreakAllWindows", {Text = "Loop Break All Windows", Default = UIState[3].Extras_LoopBreakAllWindows, Callback = function(Value)
-            UIState[3].Extras_LoopBreakAllWindows = Value
+        local Miscellaneous_Extras = MiscellaneousTab:AddRightGroupbox("Extras")
+        Miscellaneous_Extras:AddToggle("Extras_BreakAllWindows", {Text = "Break All Windows", Default = UIState[3].Extras_BreakAllWindows, Callback = function(Value)
+            UIState[3].Extras_BreakAllWindows = Value
         end})
         Miscellaneous_Extras:AddToggle("Extras_HopOnVotekick", {Text = "Hop On Votekick", Default = UIState[3].Extras_HopOnVotekick, Callback = function(Value)
             UIState[3].Extras_HopOnVotekick = Value
@@ -6173,8 +5056,13 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         task.spawn(function()
             while true do
-                if UIState[3].Extras_LoopBreakAllWindows then
-                    BreakAllWindows()
+                if UIState[3].Extras_BreakAllWindows then
+                    local CameraPosition = GameData[1].CFrame.Position
+                    for _,Descendant in next, workspace:QueryDescendants("BasePart#Window") do
+                        if Descendant.Position ~= CameraPosition then
+                            UIFeatures[7](Descendant, Descendant.Position, (Descendant.Position - CameraPosition).Unit)
+                        end
+                    end
                     task.wait(4.975)
                 end
                 task.wait()
@@ -6182,60 +5070,528 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         end)
     end
 
-    local function SettingsTab()
-        local Settings_UserInterface = Tabs.Settings:AddLeftGroupbox("User Interface")
+    local function Build_SettingsTab()
+        local Settings_UserInterface = SettingsTab:AddLeftGroupbox("User Interface")
         Settings_UserInterface:AddToggle("Watermark_Enabled", {Text = "Watermark", Default = false, Callback = function(Value)
+            self.WatermarkState.Frames, self.WatermarkState.LastUpdate = 0, os.clock()
             self.WatermarkOptions.Enabled, self.Watermark.Visible = Value, Value
-        end}):AddColorPicker("Watermark_Color", {Default = Color3.fromRGB(255, 255, 255), Title = "Watermark Color", Callback = function(Value)
+        end}):AddColorPicker("Watermark_Color", {Default = Color3.fromRGB(255, 255, 255), Callback = function(Value)
             self.WatermarkOptions.Color = Value
+        end})
+
+        Settings_UserInterface:AddToggle("OptimizedDragging", {Text = "Optimized Dragging", Default = self.OptimizedDragging, Callback = function(Value)
+            self.OptimizedDragging = Value
         end})
 
         Settings_UserInterface:AddToggle("ActiveKeybindList", {Text = "Active Keybind List", Default = true, Callback = function(Value)
             self.ActiveKeybindFrame.Visible = Value
         end})
 
-        Settings_UserInterface:AddLabel("Menu Toggle Keybind"):AddKeyPicker("Inactive4", {Default = "RightShift", Mode = "Toggle", Text = "Menu Toggle Keybind", NoUI = true, Callback = function(Value)
-            self:Toggle()
+        Settings_UserInterface:AddLabel("Menu Toggle Keybind"):AddKeyPicker("Inactive4", {Default = "RightShift", Mode = "Toggle", Modes = {"Toggle"}, Text = "Menu Toggle Keybind", NoUI = true, Callback = function(Value)
+            if type(Value) == "boolean" then
+                self:Toggle()
+            end
         end})
 
-        local Settings_Advanced = Tabs.Settings:AddRightGroupbox("Advanced")
-        Settings_Advanced:AddToggle("Advanced_MultiPointEnabled", {Text = "Multi-Point Raycasting", Default = UIState[4].Advanced_MultiPointEnabled, Callback = function(Value)
-            UIState[4].Advanced_MultiPointEnabled = Value
-        end})
-
-        local MultiPointDependencyBox = Settings_Advanced:AddDependencyBox():SetupDependencies({{Toggles.Advanced_MultiPointEnabled, true}})
-        MultiPointDependencyBox:AddSlider("Advanced_MultiPointScale", {Text = "Scale", Default = UIState[4].Advanced_MultiPointScale, Min = 2, Max = 10, Rounding = 0, Callback = function(Value)
+        local Settings_Advanced = SettingsTab:AddRightGroupbox("Advanced")
+        Settings_Advanced:AddSlider("Advanced_MultiPointScale", {Text = "Multi-Point Raycasting Scale", Default = UIState[4].Advanced_MultiPointScale, Min = 2, Max = 10, Rounding = 0, Callback = function(Value)
             UIState[4].Advanced_MultiPointScale = Value
-        end})
-        MultiPointDependencyBox:AddSlider("Advanced_MultiPointLayers", {Text = "Layers", Default = UIState[4].Advanced_MultiPointLayers, Min = 1, Max = 5, Rounding = 0, Callback = function(Value)
-            UIState[4].Advanced_MultiPointLayers = Value
+            UIFeatures[12]()
         end})
 
         Settings_Advanced:AddButton({Text = "Server Hop", Func = function()
-            game:GetService("TeleportService"):Teleport(game.PlaceId, game:GetService("Players").LocalPlayer)
+            local TeleportService = game:GetService("TeleportService")
+            local Success, Error
+            for _ = 1, 5 do
+                Success, Error = pcall(TeleportService.Teleport, TeleportService, game.PlaceId, LocalPlayer)
+                if Success then
+                    return
+                end
+                task.wait(0.5)
+            end
+            self:Notify("Server hop failed: " .. tostring(Error), 5)
+        end}):AddButton({Text = "Rejoin", Func = function()
+            local TeleportService = game:GetService("TeleportService")
+            local Success, Error
+            for _ = 1, 5 do
+                Success, Error = pcall(TeleportService.TeleportToPlaceInstance, TeleportService, game.PlaceId, game.JobId, LocalPlayer)
+                if Success then
+                    return
+                end
+                task.wait(0.5)
+            end
+            self:Notify("Rejoin failed: " .. tostring(Error), 5)
         end})
 
         Settings_Advanced:AddLabel("Module Method: " .. GameData[4])
     end
 
-    AimingTab()
-    VisualsTab()
-    MiscellaneousTab()
-    SettingsTab()
+    local function Build_ConfigsTab()
+        local Holder = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 8, 0, 8),
+            Size = UDim2.new(1, -16, 1, -16),
+            ClipsDescendants = true,
+            ZIndex = 2,
+            Parent = ConfigsTab.Frame
+        })
 
-    self:BuildConfigsTab(Tabs.Configs)
-end
+        local RefreshLocalRows
 
-local function OnPlayerChange()
-    local PlayerList = GetPlayersString()
-    for _,Value in next, Options do
-        if Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then
-            Value:SetValues(PlayerList)
+        local function MakeButton(Parent, Text, Position, Size, Callback)
+            local Outer = Library:Create("Frame", {
+                BackgroundColor3 = Color3.new(0, 0, 0),
+                BorderColor3 = Color3.new(0, 0, 0),
+                Position = Position,
+                Size = Size,
+                ZIndex = 5,
+                Parent = Parent
+            })
+            local Inner = Library:Create("Frame", {
+                BackgroundColor3 = Library.MainColor,
+                BorderColor3 = Library.OutlineColor,
+                BorderMode = Enum.BorderMode.Inset,
+                Size = UDim2.new(1, 0, 1, 0),
+                ZIndex = 6,
+                Parent = Outer
+            })
+            local Label = Library:CreateLabel({
+                Size = UDim2.new(1, 0, 1, 0),
+                TextSize = 14,
+                Text = Text,
+                ZIndex = 6,
+                Parent = Inner
+            })
+            Library:OnHighlight(Outer, Outer, {BorderColor3 = "AccentColor"}, {BorderColor3 = "Black"})
+            Outer.InputBegan:Connect(function(Input)
+                if Input.UserInputType ~= Enum.UserInputType.MouseButton1 or Library:MouseIsOverOpenedFrame(Outer) then
+                    return
+                end
+                Callback()
+            end)
+            return Outer, Label
         end
-    end
-end
 
-Players.PlayerAdded:Connect(OnPlayerChange)
-Players.PlayerRemoving:Connect(OnPlayerChange)
+        local LocalPanel = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, 2),
+            Size = UDim2.new(1, -4, 1, -10),
+            ZIndex = 2,
+            Parent = Holder
+        })
+
+        local ImportPopup = Library:CreateLocalTextPopup("Import Config", "Paste config JSON", "Import", true, function(Text)
+            local Success, Data = pcall(HttpService.JSONDecode, HttpService, Text)
+            if not Success or string.match(Text, "^%s*(.)") ~= "{" or type(Data) ~= "table" then
+                return Library:Notify("Please paste a valid config JSON object.", 3)
+            end
+
+            local Valid, Error = ValidateConfig(Data)
+            if not Valid then
+                return Library:Notify(Error, 3)
+            end
+
+            local Number = 1
+            while isfile("NikoletoScripts/PhantomWare/Configs/ImportedConfig_" .. Number .. ".ns") do
+                Number += 1
+            end
+
+            local Name = "ImportedConfig_" .. Number
+            if WriteLocalConfig(Name, Data) then
+                RefreshLocalRows()
+                Library:Notify("Imported Config: " .. Name, 3)
+                return true
+            end
+        end)
+        local ImportButton = MakeButton(LocalPanel, "Import", UDim2.new(1, -132, 0, 0), UDim2.new(0, 62, 0, 20), function()
+            ImportPopup:Show()
+        end)
+
+        local LoadedProfile
+        local SelectedLocalName
+        local ConfigRows = {}
+        local SaveCurrentConfig
+        local IsSaveLayoutAnimating = false
+        local IsSettingConfigName = false
+
+        local NameBox = Library:Create("TextBox", {
+            BackgroundColor3 = Library.MainColor,
+            BorderColor3 = Library.OutlineColor,
+            Position = UDim2.new(0, 2, 0, 0),
+            Size = UDim2.new(1, -252, 0, 20),
+            Text = "",
+            PlaceholderText = "Config Name",
+            ClearTextOnFocus = false,
+            TextColor3 = Color3.new(1, 1, 1),
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 5,
+            Parent = LocalPanel
+        })
+
+        local AutoloadButton, AutoloadToggleLabel = MakeButton(LocalPanel, "Set as autoload", UDim2.new(1, -246, 0, 0), UDim2.new(0, 110, 0, 20), function()
+            if not SelectedLocalName then
+                return Library:Notify("Select a config first.", 3)
+            end
+
+            if GetAutoload() == SelectedLocalName then
+                delfile("NikoletoScripts/PhantomWare/Autoload.ns")
+                Library:Notify("Removed Configuration Profile from Autoload.", 3)
+            else
+                writefile("NikoletoScripts/PhantomWare/Autoload.ns", SelectedLocalName)
+                Library:Notify("Set " .. SelectedLocalName .. " as Autoload.", 3)
+            end
+
+            RefreshLocalRows()
+        end)
+
+        local SaveButton, SaveButtonLabel = MakeButton(LocalPanel, "Save", UDim2.new(1, -66, 0, 0), UDim2.new(0, 62, 0, 20), function()
+            if not IsSaveLayoutAnimating then
+                SaveCurrentConfig()
+            end
+        end)
+
+        local function PaintAutoloadToggle()
+            AutoloadToggleLabel.Text = SelectedLocalName and GetAutoload() == SelectedLocalName and "Remove autoload" or "Set as autoload"
+        end
+
+        local function SelectConfig(Name)
+            local Previous = ConfigRows[SelectedLocalName]
+            if Previous then
+                Previous.BorderColor3 = Library.OutlineColor
+            end
+            SelectedLocalName = Name
+
+            local Row = ConfigRows[Name]
+            if Row then
+                Row.BorderColor3 = Library.AccentColor
+            end
+
+            PaintAutoloadToggle()
+        end
+        local SaveLayoutTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local SaveButtonTween, NameBoxTween, AutoloadButtonTween, ImportButtonTween
+        local IsOverwriteMode = false
+        local SaveModeVersion = 0
+
+        local function ResolveOverwriteName()
+            local Name = string.gsub(NameBox.Text, "^%s*(.-)%s*$", "%1")
+            if #Name <= 0 then
+                return
+            end
+
+            local ConfigPath = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
+            if isfile(ConfigPath) then
+                local LowerName = string.lower(Name)
+                for ExistingName in next, ConfigRows do
+                    if string.lower(ExistingName) == LowerName then
+                        return ExistingName
+                    end
+                end
+                return Name
+            end
+        end
+
+        local function UpdateSaveButtonState()
+            local ShouldOverwrite = not not ResolveOverwriteName()
+            if ShouldOverwrite == IsOverwriteMode then
+                return
+            end
+
+            IsOverwriteMode = ShouldOverwrite
+            SaveModeVersion += 1
+            local Version = SaveModeVersion
+            IsSaveLayoutAnimating = true
+            if SaveButtonTween then
+                SaveButtonTween:Cancel()
+            end
+
+            if NameBoxTween then
+                NameBoxTween:Cancel()
+            end
+
+            if AutoloadButtonTween then
+                AutoloadButtonTween:Cancel()
+            end
+
+            if ImportButtonTween then
+                ImportButtonTween:Cancel()
+            end
+
+            SaveButtonLabel.Text = ShouldOverwrite and "Overwrite" or "Save"
+
+            SaveButtonTween = TweenService:Create(SaveButton, SaveLayoutTweenInfo, {
+                Position = UDim2.new(1, ShouldOverwrite and -90 or -66, 0, 0),
+                Size = UDim2.new(0, ShouldOverwrite and 86 or 62, 0, 20)
+            })
+            NameBoxTween = TweenService:Create(NameBox, SaveLayoutTweenInfo, {
+                Size = UDim2.new(1, ShouldOverwrite and -276 or -252, 0, 20)
+            })
+            AutoloadButtonTween = TweenService:Create(AutoloadButton, SaveLayoutTweenInfo, {
+                Position = UDim2.new(1, ShouldOverwrite and -270 or -246, 0, 0)
+            })
+            ImportButtonTween = TweenService:Create(ImportButton, SaveLayoutTweenInfo, {
+                Position = UDim2.new(1, ShouldOverwrite and -156 or -132, 0, 0)
+            })
+            SaveButtonTween.Completed:Connect(function(PlaybackState)
+                if PlaybackState == Enum.PlaybackState.Completed and Version == SaveModeVersion then
+                    IsSaveLayoutAnimating = false
+                end
+            end)
+            SaveButtonTween:Play()
+            NameBoxTween:Play()
+            AutoloadButtonTween:Play()
+            ImportButtonTween:Play()
+        end
+
+        local function SetConfigName(Name)
+            IsSettingConfigName = true
+            NameBox.Text = Name
+            IsSettingConfigName = false
+            UpdateSaveButtonState()
+        end
+
+        NameBox:GetPropertyChangedSignal("Text"):Connect(function()
+            if IsSettingConfigName then
+                return
+            end
+            local Name = ResolveOverwriteName()
+            if SelectedLocalName ~= Name then
+                SelectConfig(Name)
+            end
+            UpdateSaveButtonState()
+        end)
+
+        SaveCurrentConfig = function()
+            local ExistingName = ResolveOverwriteName()
+            local Name = ExistingName or string.gsub(NameBox.Text, "^%s*(.-)%s*$", "%1")
+            if #Name <= 0 then
+                return Library:Notify("Please enter a config name.", 3)
+            end
+
+            if string.match(Name, "[/\\:*?\"<>|%c]") then
+                return Library:Notify("Config name contains invalid characters.", 3)
+            end
+
+            local Data = {}
+
+            for Flag, Toggle in next, Toggles do
+                if type(Toggle) == "table" and Toggle.Value ~= nil and not string.find(string.lower(Flag), "inactive") then
+                    Data[Flag] = {Type = "Toggle", Value = Toggle.Value}
+                end
+            end
+
+            for Flag, Option in next, Options do
+                if type(Option) ~= "table" or string.find(string.lower(Flag), "inactive") then
+                    continue
+                end
+
+                local Type = Option.Type
+                if type(Type) ~= "string" then
+                    continue
+                end
+
+                if Type == "ColorPicker" then
+                    if typeof(Option.Value) == "Color3" then
+                        Data[Flag] = {Type = Type, Value = Option.Value:ToHex(), Transparency = Option.Transparency}
+                    end
+                elseif Type == "KeyPicker" then
+                    if Option.Value then
+                        Data[Flag] = {Type = Type, Value = Option.Value, Mode = Option.Mode}
+                    end
+                elseif (Type == "Dropdown" or Type == "Slider") and Option.Value ~= nil then
+                    Data[Flag] = {Type = Type, Value = Option.Value}
+                end
+            end
+
+            if WriteLocalConfig(Name, Data) then
+                SetConfigName(Name)
+                Library:Notify((ExistingName and "Overwrote" or "Saved") .. " Configuration Profile: " .. Name, 3)
+                RefreshLocalRows()
+            end
+        end
+
+        local LocalListBox = Library:Create("Frame", {
+            BackgroundColor3 = Library.BackgroundColor,
+            BorderColor3 = Library.OutlineColor,
+            BorderMode = Enum.BorderMode.Inset,
+            Position = UDim2.new(0, 0, 0, 26),
+            Size = UDim2.new(1, 0, 1, -34),
+            ZIndex = 2,
+            Parent = LocalPanel
+        })
+        local LocalRows = MakeScroll(LocalListBox, UDim2.new(0, 8, 0, 8), UDim2.new(1, -16, 1, -16))
+
+        local RenameSourceName
+        local RenamePopup = Library:CreateLocalTextPopup("Rename Config", "New config name", "Rename", false, function(Text)
+            local NewName = string.gsub(Text, "^%s*(.-)%s*$", "%1")
+            if #NewName <= 0 then
+                return Library:Notify("Name must contain at least one character.", 3)
+            end
+
+            if NewName == RenameSourceName then
+                return true
+            end
+
+            if string.match(NewName, "[/\\:*?\"<>|%c]") then
+                return Library:Notify("Name contains invalid characters.", 3)
+            end
+
+            local OldPath = "NikoletoScripts/PhantomWare/Configs/" .. RenameSourceName .. ".ns"
+            local NewPath = "NikoletoScripts/PhantomWare/Configs/" .. NewName .. ".ns"
+            if isfile(NewPath) then
+                return Library:Notify("A config with that name already exists.", 3)
+            end
+
+            if not isfile(OldPath) then
+                Library:Notify("Config no longer exists.", 3)
+                RefreshLocalRows()
+                return true
+            end
+
+            writefile(NewPath, readfile(OldPath))
+            delfile(OldPath)
+            if GetAutoload() == RenameSourceName then
+                writefile("NikoletoScripts/PhantomWare/Autoload.ns", NewName)
+            end
+
+            if LoadedProfile == RenameSourceName then
+                LoadedProfile = NewName
+            end
+
+            if SelectedLocalName == RenameSourceName then
+                SelectedLocalName = NewName
+                SetConfigName(NewName)
+            end
+
+            Library:Notify("Renamed config to " .. NewName .. ".", 3)
+            UpdateSaveButtonState()
+            RefreshLocalRows()
+            return true
+        end)
+
+        RefreshLocalRows = function()
+            for _,Child in next, LocalRows:GetChildren() do
+                if Child:IsA("GuiObject") then
+                    Child:Destroy()
+                end
+            end
+            table.clear(ConfigRows)
+
+            local Names = {}
+            if isfolder("NikoletoScripts/PhantomWare/Configs") then
+                for _,FilePath in next, listfiles("NikoletoScripts/PhantomWare/Configs") do
+                    local Name = string.match(FilePath, "([^/\\]*)%.ns$")
+                    if Name then
+                        Names[#Names + 1] = Name
+                    end
+                end
+                table.sort(Names)
+            end
+
+            for _,Name in next, Names do
+                local Row = Library:Create("Frame", {
+                    BackgroundColor3 = Library.BackgroundColor,
+                    BorderColor3 = Library.OutlineColor,
+                    BorderMode = Enum.BorderMode.Inset,
+                    Size = UDim2.new(1, -4, 0, 22),
+                    ZIndex = 3,
+                    Parent = LocalRows
+                })
+                ConfigRows[Name] = Row
+
+                if SelectedLocalName == Name then
+                    Row.BorderColor3 = Library.AccentColor
+                end
+
+                Row.InputBegan:Connect(function(Input)
+                    if Input.UserInputType ~= Enum.UserInputType.MouseButton1
+                        or Input.Position.X >= Row.AbsolutePosition.X + Row.AbsoluteSize.X - (setclipboard and 256 or 192)
+                        or Library:MouseIsOverOpenedFrame(Row) then
+                        return
+                    end
+                    SelectConfig(SelectedLocalName ~= Name and Name or nil)
+                    SetConfigName(SelectedLocalName or "")
+                end)
+
+                local NameLabel = Library:CreateLabel({
+                    Position = UDim2.new(0, 6, 0, 0),
+                    Size = UDim2.new(1, setclipboard and -262 or -198, 1, 0),
+                    TextSize = 13,
+                    Text = Name,
+                    TextWrapped = false,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 4,
+                    Parent = Row
+                })
+                if LoadedProfile == Name then
+                    NameLabel.TextColor3 = Library.AccentColor
+                end
+
+                MakeButton(Row, "Rename", UDim2.new(1, setclipboard and -256 or -192, 0, 1), UDim2.new(0, 60, 0, 18), function()
+                    RenameSourceName = Name
+                    RenamePopup.Title.Text = "Rename " .. Name
+                    RenamePopup:Show(Name)
+                end)
+
+                if setclipboard then
+                    MakeButton(Row, "Copy", UDim2.new(1, -192, 0, 1), UDim2.new(0, 60, 0, 18), function()
+                        local Path = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
+                        if isfile(Path) then
+                            setclipboard(readfile(Path))
+                            Library:Notify("Copied Config: " .. Name, 3)
+                        else
+                            Library:Notify("Config no longer exists.", 3)
+                            RefreshLocalRows()
+                        end
+                    end)
+                end
+
+                MakeButton(Row, "Load", UDim2.new(1, -128, 0, 1), UDim2.new(0, 60, 0, 18), function()
+                    if LoadLocalConfig(Name) then
+                        LoadedProfile = Name
+                        RefreshLocalRows()
+                    end
+                end)
+
+                MakeButton(Row, "Delete", UDim2.new(1, -64, 0, 1), UDim2.new(0, 60, 0, 18), function()
+                    local Path = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
+                    if isfile(Path) then
+                        delfile(Path)
+                    end
+
+                    if GetAutoload() == Name then
+                        delfile("NikoletoScripts/PhantomWare/Autoload.ns")
+                    end
+
+                    if LoadedProfile == Name then
+                        LoadedProfile = nil
+                    end
+
+                    if SelectedLocalName == Name then
+                        SelectedLocalName = nil
+                    end
+
+                    Library:Notify("Deleted Config: " .. Name, 3)
+                    UpdateSaveButtonState()
+                    RefreshLocalRows()
+                end)
+            end
+            PaintAutoloadToggle()
+        end
+
+        RefreshLocalRows()
+
+        task.defer(function()
+            local Autoload = GetAutoload()
+            if Autoload and LoadLocalConfig(Autoload) then
+                LoadedProfile = Autoload
+                RefreshLocalRows()
+            end
+        end)
+    end
+
+    return Build_AimingTab(), Build_VisualsTab(), Build_MiscellaneousTab(), Build_SettingsTab(), Build_ConfigsTab(), Library:Toggle()
+end
 
 return Library
