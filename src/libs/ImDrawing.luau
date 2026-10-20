@@ -1,10 +1,10 @@
 local ImDrawing = {}
 
-local BoxPool = table.create(64)
-local LinePool = table.create(32)
-local TextPool = table.create(32)
-local CirclePool = table.create(64)
-local TrianglePool = table.create(16)
+local BoxPool = table.create(128)
+local LinePool = table.create(428)
+local TextPool = table.create(128)
+local CirclePool = table.create(256)
+local TrianglePool = table.create(32)
 
 local UsedBoxCount = 0
 local ActiveBoxCount = 0
@@ -126,38 +126,28 @@ function ImDrawing.Triangle(Filled, PointA, PointB, PointC, Color, Thickness, Tr
 end
 
 function ImDrawing.EndFrame()
-    if UsedBoxCount < ActiveBoxCount then
-        for Index = UsedBoxCount + 1, ActiveBoxCount do
-            BoxPool[Index].Visible = false
-        end
+    for Index = UsedBoxCount + 1, ActiveBoxCount do
+        BoxPool[Index].Visible = false
     end
     ActiveBoxCount = UsedBoxCount
 
-    if UsedLineCount < ActiveLineCount then
-        for Index = UsedLineCount + 1, ActiveLineCount do
-            LinePool[Index].Visible = false
-        end
+    for Index = UsedLineCount + 1, ActiveLineCount do
+        LinePool[Index].Visible = false
     end
     ActiveLineCount = UsedLineCount
 
-    if UsedTextCount < ActiveTextCount then
-        for Index = UsedTextCount + 1, ActiveTextCount do
-            TextPool[Index].Visible = false
-        end
+    for Index = UsedTextCount + 1, ActiveTextCount do
+        TextPool[Index].Visible = false
     end
     ActiveTextCount = UsedTextCount
 
-    if UsedCircleCount < ActiveCircleCount then
-        for Index = UsedCircleCount + 1, ActiveCircleCount do
-            CirclePool[Index].Visible = false
-        end
+    for Index = UsedCircleCount + 1, ActiveCircleCount do
+        CirclePool[Index].Visible = false
     end
     ActiveCircleCount = UsedCircleCount
 
-    if UsedTriangleCount < ActiveTriangleCount then
-        for Index = UsedTriangleCount + 1, ActiveTriangleCount do
-            TrianglePool[Index].Visible = false
-        end
+    for Index = UsedTriangleCount + 1, ActiveTriangleCount do
+        TrianglePool[Index].Visible = false
     end
     ActiveTriangleCount = UsedTriangleCount
 end
