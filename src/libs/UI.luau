@@ -132,7 +132,8 @@ function Library:CreateLocalTextPopup(Title, Placeholder, Action, MultiLine, Cal
     })
     Popup.Title = self:CreateLabel({
         Position = UDim2.fromOffset(10, 7),
-        Size = UDim2.new(1, -20, 0, 20),
+        Size = UDim2.new(1, -20, 0, MultiLine and 40 or 20),
+        TextWrapped = MultiLine,
         Text = Title,
         TextSize = 15,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -144,8 +145,8 @@ function Library:CreateLocalTextPopup(Title, Placeholder, Action, MultiLine, Cal
         InputParent = self:Create("ScrollingFrame", {
             BackgroundColor3 = self.MainColor,
             BorderColor3 = self.OutlineColor,
-            Position = UDim2.fromOffset(10, 35),
-            Size = UDim2.new(1, -20, 1, -77),
+            Position = UDim2.fromOffset(10, 55),
+            Size = UDim2.new(1, -20, 1, -97),
             CanvasSize = UDim2.fromOffset(0, 0),
             ClipsDescendants = true,
             ScrollBarThickness = 4,
@@ -223,7 +224,7 @@ function Library:CreateLocalTextPopup(Title, Placeholder, Action, MultiLine, Cal
         })
         self:OnHighlight(Button, Button, {BorderColor3 = "AccentColor"}, {BorderColor3 = "OutlineColor"})
         Button.Activated:Connect(function()
-            if not Library:MouseIsOverOpenedFrame(Button) then
+            if not Library:MouseIsOverOpenedFrame(Button, Frame) then
                 if Index == 1 then
                     Submit()
                 elseif Text == "Copy" then
@@ -408,7 +409,7 @@ local function GetTopmostGuiAtPosition(Position)
 
     local Topmost
     for _,Object in ipairs(GuiObjects) do
-        if Object:IsDescendantOf(ScreenGui) and (not Topmost or Object.ZIndex > Topmost.ZIndex) then
+        if Object:IsDescendantOf(ScreenGui) and Library:IsInputActive(Object) and (not Topmost or Object.ZIndex > Topmost.ZIndex) then
             Topmost = Object
         end
     end
@@ -5180,7 +5181,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             Parent = Holder
         })
 
-        local ImportPopup = Library:CreateLocalTextPopup("Import Config", "Paste config JSON", "Import", true, function(Text)
+        local ImportPopup = Library:CreateLocalTextPopup("Import Config - Text may be visually cut off, don't worry it will still import the full config.", "Paste config JSON", "Import", true, function(Text)
             local Success, Data = pcall(HttpService.JSONDecode, HttpService, Text)
             if not Success or string.match(Text, "^%s*(.)") ~= "{" or type(Data) ~= "table" then
                 return Library:Notify("Please paste a valid config JSON object.", 3)
