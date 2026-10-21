@@ -902,7 +902,7 @@ ns__hooktablefunction(Module.__get("CharacterObject"), "preSimulationStep", func
 		local Horizontal = Vector3.new(RootPart.Velocity.X, 0, RootPart.Velocity.Z)
 		local Speed = Horizontal.Magnitude
 		if Speed > 0.5 then
-			RootPart.CFrame += Horizontal.Unit * (Miscellaneous.Movement_SpeedAmount - Speed) * DeltaTime
+			RootPart.CFrame += Horizontal.Unit * (Miscellaneous.Movement_SpeedAmount - math.min(Speed, self._walkspeedspring.t)) * DeltaTime
 		end
 	end
 
@@ -1741,8 +1741,6 @@ function ESPModule:Update(LocalHeadPosition, Now)
 	local Skeletons = Visuals.ESPVisuals_Skeletons
 	local Tracers = Visuals.ESPVisuals_Tracers
 	local OffscreenArrows = Visuals.ESPVisuals_OffscreenArrows
-	local StaticElements = Visuals.ESPVisuals_HeadTagStaticElements
-	local StatusElements = Visuals.ESPVisuals_HeadTagStatusElements
 	local NeedsScreenBounds = Boxes or HeadTags or Healthbars
 	if not (NeedsScreenBounds or Skeletons or Tracers or OffscreenArrows or HighlightChams or SoundRings) then
 		return
@@ -1767,6 +1765,8 @@ function ESPModule:Update(LocalHeadPosition, Now)
 		ArrowRadius = math.clamp(Visuals.ESPVisuals_OffscreenArrowRadius, 0, Half - ArrowSize * 1.2)
 	end
 
+	local StaticElements = Visuals.ESPVisuals_HeadTagStaticElements
+	local StatusElements = Visuals.ESPVisuals_HeadTagStatusElements
 	local Origin = Visuals.ESPVisuals_TracerOrigin
 	local TracerFrom = Origin == "Top" and ScreenTop or Origin == "Center" and ScreenCenter or ScreenBottom
 	for Player, Entry in next, CachedPlayers do
