@@ -164,6 +164,7 @@ local Aiming = {
 	Aimbot_FOVCircleFireAmount = 15,
 	Aimbot_FOVCircleFireDuration = 0.2,
 	Aimbot_FOVCircleFollowRecoil = false,
+	Aimbot_FOVCircleFollowTarget = false,
 	Aimbot_TargetTracer = false,
 	Aimbot_TargetTracerColor = Color3.fromRGB(255, 255, 255),
 	Aimbot_TargetTracerOpacity = 1,
@@ -203,27 +204,17 @@ local Visuals = {
 	ESPVisuals_HighlightChamOccluded = false,
 	ESPVisuals_HighlightChamTransparency = 0,
 
-	ESPVisuals_Skeletons = false,
-	ESPVisuals_SkeletonColor = Color3.fromRGB(255, 255, 255),
-	ESPVisuals_SkeletonTransparency = 0,
-	ESPVisuals_SkeletonThickness = 1.5,
-	ESPVisuals_SkeletonHeadDot = false,
-
-	ESPVisuals_HeadTags = false,
-	ESPVisuals_HeadTagColor = Color3.fromRGB(255, 255, 255),
-	ESPVisuals_HeadTagTransparency = 0,
-	ESPVisuals_HeadTagPixelOffset = false,
-	ESPVisuals_HeadTagPixelOffsetSize = 0,
-	ESPVisuals_HeadTagStaticElements = {Name = true},
-	ESPVisuals_HeadTagStatusElements = {Aiming = true},
-	ESPVisuals_HeadTagPosition = "Top",
-	ESPVisuals_HeadTagSize = 13,
-
 	ESPVisuals_Boxes = false,
 	ESPVisuals_BoxColor = Color3.fromRGB(255, 255, 255),
 	ESPVisuals_BoxTransparency = 0,
 	ESPVisuals_BoxStyle = "Full",
 	ESPVisuals_BoxThickness = 1.5,
+
+	ESPVisuals_Skeletons = false,
+	ESPVisuals_SkeletonColor = Color3.fromRGB(255, 255, 255),
+	ESPVisuals_SkeletonTransparency = 0,
+	ESPVisuals_SkeletonThickness = 1.5,
+	ESPVisuals_SkeletonHeadDot = false,
 
 	ESPVisuals_Healthbars = false,
 	ESPVisuals_HealthbarStyle = "Solid",
@@ -231,6 +222,17 @@ local Visuals = {
 	ESPVisuals_HealthbarTransparency = 0,
 	ESPVisuals_HealthbarPosition = "Left",
 	ESPVisuals_HealthbarWidth = 2,
+
+	ESPVisuals_ElementTags = false,
+	ESPVisuals_ElementTagColor = Color3.fromRGB(255, 255, 255),
+	ESPVisuals_ElementTagTransparency = 0,
+	ESPVisuals_ElementTagPixelOffset = false,
+	ESPVisuals_ElementTagPixelOffsetSize = 0,
+	ESPVisuals_ElementTagStaticElements = {Name = true},
+	ESPVisuals_ElementTagStaticPosition = "Top",
+	ESPVisuals_ElementTagStatusElements = {Aiming = true},
+	ESPVisuals_ElementTagStatusPosition = "Top",
+	ESPVisuals_ElementTagSize = 13,
 
 	ESPVisuals_Tracers = false,
 	ESPVisuals_TracerColor = Color3.fromRGB(255, 255, 255),
@@ -329,6 +331,11 @@ local Visuals = {
 	Combat_HitGhostsColor = Color3.fromRGB(255, 255, 255),
 	Combat_HitGhostsOnKillOnly = false,
 
+	HitLogs_Enabled = false,
+	HitLogs_ShowDamage = false,
+	HitLogs_ShowDistance = false,
+	HitLogs_ShowPart = true,
+
 	Combat_RadarHack = false,
 	Combat_AutoSpot = false,
 
@@ -402,6 +409,7 @@ local Miscellaneous = {
 	WeaponMods_AutomaticGun = false,
 	WeaponMods_InstantBullet = false,
 	WeaponMods_RapidFire = false,
+	WeaponMods_RapidFireAmount = 1.3,
 	WeaponMods_RecoilAdjustment = 100,
 	WeaponMods_SpreadAdjustment = 100,
 
@@ -422,11 +430,6 @@ local Miscellaneous = {
 	WeaponMods_MuzzleFlashColor = Color3.fromRGB(255, 150, 50),
 	WeaponMods_MuzzleFlashSize = 1,
 
-	HitLogs_Enabled = false,
-	HitLogs_ShowDamage = false,
-	HitLogs_ShowDistance = false,
-	HitLogs_ShowPart = true,
-
 	SoundOverride_ShootSound = "None",
 	SoundOverride_HitSound = "None",
 	SoundOverride_KillSound = "None",
@@ -442,8 +445,22 @@ local Miscellaneous = {
 	Movement_BunnyHop = false,
 	Movement_Fly = false,
 	Movement_FlySpeed = 16,
+	Movement_FlyStanceOverride = false,
+	Movement_FlyStanding = false,
+	Movement_FlyStandingAmount = 16,
+	Movement_FlyCrouch = false,
+	Movement_FlyCrouchAmount = 16,
+	Movement_FlyProne = false,
+	Movement_FlyProneAmount = 16,
 	Movement_Speed = false,
 	Movement_SpeedAmount = 16,
+	Movement_SpeedStanceOverride = false,
+	Movement_SpeedStanding = false,
+	Movement_SpeedStandingAmount = 16,
+	Movement_SpeedCrouch = false,
+	Movement_SpeedCrouchAmount = 16,
+	Movement_SpeedProne = false,
+	Movement_SpeedProneAmount = 16,
 	Movement_InfiniteStamina = false,
 
 	AntiAim_Enabled = false,
@@ -476,7 +493,7 @@ local Miscellaneous = {
 }
 
 local Settings = {
-	Advanced_MultiPointScale = 2
+	Others_MultiPointScale = 2
 }
 
 local LightingCache = {
@@ -670,14 +687,14 @@ local CanSeeFrameCounter, CanSeeCache, CanSeeSizes = 0, {}, {PartSizes.Head, Par
 
 local function CacheMultiPoint()
 	local Directions, Offsets = {}, {}
-	for Index = 1, Settings.Advanced_MultiPointScale do
-		local Y = (2 * Index - 1) / Settings.Advanced_MultiPointScale - 1
+	for Index = 1, Settings.Others_MultiPointScale do
+		local Y = (2 * Index - 1) / Settings.Others_MultiPointScale - 1
 		Directions[Index] = Vector3.new(math.cos((Index - 1) * GoldenAngle) * math.sqrt(1 - Y * Y), Y, -math.sin((Index - 1) * GoldenAngle) * math.sqrt(1 - Y * Y))
 	end
 
 	for _,Size in ipairs(CanSeeSizes) do
 		Offsets[Size] = {{}, {}}
-		for Index = 1, Settings.Advanced_MultiPointScale do
+		for Index = 1, Settings.Others_MultiPointScale do
 			Offsets[Size][1][Index], Offsets[Size][2][Index] = Directions[Index] * Size * 0.5, Directions[Index] * Size
 		end
 	end
@@ -706,7 +723,7 @@ local function CanSee(Part, Name, CenterOnly)
 		return
 	end
 
-	local Directions, Offsets, Scale = MultiPointCache.Directions, MultiPointCache.Offsets[PartSizes[Name]], Settings.Advanced_MultiPointScale
+	local Directions, Offsets, Scale = MultiPointCache.Directions, MultiPointCache.Offsets[PartSizes[Name]], Settings.Others_MultiPointScale
 	for Index = 2, Magnitude <= 2.327906827477306 and 1 or 2, -1 do
 		local Positions = Offsets[Index]
 		for _Index = 1, Scale do
@@ -812,7 +829,7 @@ for _,ObjectModule in ipairs({FirearmObject, GrenadeObject, MeleeObject}) do
 
 	if IsFirearmObject then
 		ns__hooktablefunction(ObjectModule, "getFirerate", function(Original, self, ...)
-			return Original(self, ...) * (Miscellaneous.WeaponMods_RapidFire and 1.5 or 1)
+			return Original(self, ...) * (Miscellaneous.WeaponMods_RapidFire and Miscellaneous.WeaponMods_RapidFireAmount or 1)
 		end)
 
 		for _,Name in ipairs({"shoot", "fireRound"}) do
@@ -902,11 +919,33 @@ ns__hooktablefunction(Module.__get("CharacterObject"), "preSimulationStep", func
 		local Horizontal = Vector3.new(RootPart.Velocity.X, 0, RootPart.Velocity.Z)
 		local Speed = Horizontal.Magnitude
 		if Speed > 0.5 then
-			RootPart.CFrame += Horizontal.Unit * (Miscellaneous.Movement_SpeedAmount - math.min(Speed, self._walkspeedspring.t)) * DeltaTime
+			local Amount = Miscellaneous.Movement_SpeedAmount
+			if Miscellaneous.Movement_SpeedStanceOverride then
+				local Stance = self._movementMode
+				if Stance == "stand" and Miscellaneous.Movement_SpeedStanding then
+					Amount = Miscellaneous.Movement_SpeedStandingAmount
+				elseif Stance == "crouch" and Miscellaneous.Movement_SpeedCrouch then
+					Amount = Miscellaneous.Movement_SpeedCrouchAmount
+				elseif Stance == "prone" and Miscellaneous.Movement_SpeedProne then
+					Amount = Miscellaneous.Movement_SpeedProneAmount
+				end
+			end
+			RootPart.CFrame += Horizontal.Unit * (Amount - math.min(Speed, self._walkspeedspring.t)) * DeltaTime
 		end
 	end
 
 	if Miscellaneous.Movement_Fly then
+		local Amount = Miscellaneous.Movement_FlySpeed
+		if Miscellaneous.Movement_FlyStanceOverride then
+			local Stance = self._movementMode
+			if Stance == "stand" and Miscellaneous.Movement_FlyStanding then
+				Amount = Miscellaneous.Movement_FlyStandingAmount
+			elseif Stance == "crouch" and Miscellaneous.Movement_FlyCrouch then
+				Amount = Miscellaneous.Movement_FlyCrouchAmount
+			elseif Stance == "prone" and Miscellaneous.Movement_FlyProne then
+				Amount = Miscellaneous.Movement_FlyProneAmount
+			end
+		end
 		local CameraCFrame = Camera.CFrame
 		local Direction = CameraCFrame.LookVector * ((UserInputService:IsKeyDown(Enum.KeyCode.W) and 1 or 0) - (
 			UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0
@@ -915,11 +954,11 @@ ns__hooktablefunction(Module.__get("CharacterObject"), "preSimulationStep", func
 		))
 
 		if Direction.Magnitude > 0 then
-			Direction = Direction.Unit * Miscellaneous.Movement_FlySpeed
+			Direction = Direction.Unit * Amount
 		end
 
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			Direction += Vector3.new(0, Miscellaneous.Movement_FlySpeed, 0)
+			Direction += Vector3.new(0, Amount, 0)
 		end
 
 		local RootPart = self._rootPart
@@ -1574,7 +1613,7 @@ local ESPSkeletonBones, ESPBoxSegments, ESPEdges = {{1, 2}, {1, 3}, {1, 4}, {4, 
 	{0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, -1, 0}, {1, 0, 0, 1}, {0, 1, 0, -1}, {0, 1, 1, 0}, {1, 1, -1, 0}, {1, 1, 0, -1}
 }, {{1, 2}, {1, 3}, {2, 4}, {3, 4}, {5, 6}, {5, 7}, {6, 8}, {7, 8}, {1, 5}, {2, 6}, {3, 7}, {4, 8}}
 local ESPCornerCache, ESPDepthCache, ESPBoundsCache = table.create(8), table.create(8), table.create(5)
-local ESPJointCache, ESPScreenCache, HeadTagCache = table.create(11), table.create(11), {}
+local ESPJointCache, ESPScreenCache, StaticTagCache, StatusTagCache = table.create(11), table.create(11), {}, {}
 
 local function GetWeldPosition(Weld)
 	return (Weld.part0.CFrame * Weld.C0).Position
@@ -1736,12 +1775,12 @@ function ESPModule:Update(LocalHeadPosition, Now)
 	end
 
 	local Boxes = Visuals.ESPVisuals_Boxes
-	local HeadTags = Visuals.ESPVisuals_HeadTags
-	local Healthbars = Visuals.ESPVisuals_Healthbars
 	local Skeletons = Visuals.ESPVisuals_Skeletons
+	local Healthbars = Visuals.ESPVisuals_Healthbars
+	local ElementTags = Visuals.ESPVisuals_ElementTags
 	local Tracers = Visuals.ESPVisuals_Tracers
 	local OffscreenArrows = Visuals.ESPVisuals_OffscreenArrows
-	local NeedsScreenBounds = Boxes or HeadTags or Healthbars
+	local NeedsScreenBounds = Boxes or ElementTags or Healthbars
 	if not (NeedsScreenBounds or Skeletons or Tracers or OffscreenArrows or HighlightChams or SoundRings) then
 		return
 	end
@@ -1765,8 +1804,8 @@ function ESPModule:Update(LocalHeadPosition, Now)
 		ArrowRadius = math.clamp(Visuals.ESPVisuals_OffscreenArrowRadius, 0, Half - ArrowSize * 1.2)
 	end
 
-	local StaticElements = Visuals.ESPVisuals_HeadTagStaticElements
-	local StatusElements = Visuals.ESPVisuals_HeadTagStatusElements
+	local StaticElements = Visuals.ESPVisuals_ElementTagStaticElements
+	local StatusElements = Visuals.ESPVisuals_ElementTagStatusElements
 	local Origin = Visuals.ESPVisuals_TracerOrigin
 	local TracerFrom = Origin == "Top" and ScreenTop or Origin == "Center" and ScreenCenter or ScreenBottom
 	for Player, Entry in next, CachedPlayers do
@@ -1918,7 +1957,7 @@ function ESPModule:Update(LocalHeadPosition, Now)
 
 			if BoxLeft then
 				local Health, MaxHealth
-				if Healthbars or HeadTags and StaticElements.Health then
+				if Healthbars or ElementTags and StaticElements.Health then
 					Health, MaxHealth = Entry:getHealth()
 				end
 
@@ -1937,79 +1976,87 @@ function ESPModule:Update(LocalHeadPosition, Now)
 					end
 				end
 
-				if HeadTags then
-					local Position = Visuals.ESPVisuals_HeadTagPosition
-					local Side = Position == "Left" or Position == "Right"
-					table.clear(HeadTagCache)
+				if ElementTags then
+					local StaticPosition, StatusPosition = Visuals.ESPVisuals_ElementTagStaticPosition, Visuals.ESPVisuals_ElementTagStatusPosition
+					local IsSamePosition = StaticPosition == StatusPosition
+					local StatusCache = IsSamePosition and StaticTagCache or StatusTagCache
+
+					table.clear(StaticTagCache)
+					table.clear(StatusTagCache)
 
 					if StaticElements.Name then
-						table.insert(HeadTagCache, Player.Name)
+						table.insert(StaticTagCache, Player.Name)
 					end
 
 					if StaticElements.Health then
-						table.insert(HeadTagCache, ("[%d Health]"):format(math.floor(Health)))
+						table.insert(StaticTagCache, ("[%d Health]"):format(math.floor(Health)))
 					end
 
 					if StaticElements.Distance then
-						table.insert(HeadTagCache, ("[%d Studs]"):format(math.floor(Distance)))
+						table.insert(StaticTagCache, ("[%d Studs]"):format(math.floor(Distance)))
 					end
 
 					local Weapon = StaticElements.Weapon and Entry:getWeaponObject()
 					if Weapon then
-						table.insert(HeadTagCache, "[" .. Weapon.weaponName .. "]")
+						table.insert(StaticTagCache, "[" .. Weapon.weaponName .. "]")
 					end
 
 					if StatusElements.Aiming and ThirdPersonObject._aimSpring.t == 0 then
-						table.insert(HeadTagCache, "[Aiming]")
+						table.insert(StatusCache, "[Aiming]")
 					end
 
 					if StatusElements.Sprinting and ThirdPersonObject._sprintSpring.t == 0 then
-						table.insert(HeadTagCache, "[Sprinting]")
+						table.insert(StatusCache, "[Sprinting]")
 					end
 
 					local Stance = ThirdPersonObject._stanceSpring.t
 					if StatusElements.Crouching and Stance == 0.5 then
-						table.insert(HeadTagCache, "[Crouching]")
+						table.insert(StatusCache, "[Crouching]")
 					elseif StatusElements.Prone and Stance == 1 then
-						table.insert(HeadTagCache, "[Prone]")
+						table.insert(StatusCache, "[Prone]")
 					end
 
-					if #HeadTagCache > 0 then
-						local Text = table.concat(HeadTagCache, Side and "\n" or " ")
-						local Size = math.floor(Visuals.ESPVisuals_HeadTagSize * (0.75 + math.min(1, BoxHeight / 100) * 0.25) + 0.5)
-
-						if Visuals.ESPVisuals_HeadTagPixelOffset then
-							Size = math.max(1, Size + Visuals.ESPVisuals_HeadTagPixelOffsetSize)
+					if #StaticTagCache > 0 or #StatusTagCache > 0 then
+						local Size = math.floor(Visuals.ESPVisuals_ElementTagSize * (0.75 + math.min(1, BoxHeight / 100) * 0.25) + 0.5)
+						if Visuals.ESPVisuals_ElementTagPixelOffset then
+							Size = math.max(1, Size + Visuals.ESPVisuals_ElementTagPixelOffsetSize)
 						end
 
-						local Width, Height = Library:GetTextBounds(Text, Enum.Font.Arimo, Size)
-						local Padding = Healthbars and Visuals.ESPVisuals_HealthbarPosition == Position and Visuals.ESPVisuals_HealthbarWidth + 6 or 3
+						for Index = 1, IsSamePosition and 1 or 2 do
+							local Elements = Index == 1 and StaticTagCache or StatusTagCache
+							if #Elements == 0 then
+								continue
+							end
 
-						local X = (BoxLeft + BoxRight) * 0.5
-						local Y = Position == "Bottom" and BoxBottom + Padding or BoxTop - Height - Padding
+							local _Position = Index == 1 and StaticPosition or StatusPosition
+							local Side = _Position == "Left" or _Position == "Right"
+							local Text = table.concat(Elements, Side and "\n" or " ")
+							local Width, Height = Library:GetTextBounds(Text, Enum.Font.Arimo, Size)
+							local Padding = Healthbars and Visuals.ESPVisuals_HealthbarPosition == _Position and Visuals.ESPVisuals_HealthbarWidth + 6 or 3
 
-						if Side then
-							X = Position == "Left" and BoxLeft - Padding - Width * 0.5 or BoxRight + Padding + Width * 0.5
-							Y = (BoxTop + BoxBottom - Height) * 0.5
+							local X, Y = (BoxLeft + BoxRight) * 0.5, _Position == "Bottom" and BoxBottom + Padding or BoxTop - Height - Padding
+							if Side then
+								X = _Position == "Left" and BoxLeft - Padding - Width * 0.5 or BoxRight + Padding + Width * 0.5
+								Y = (BoxTop + BoxBottom - Height) * 0.5
+							end
+
+							ImDrawing.Text(Vector2.new(X, Y), Text, Visuals.ESPVisuals_ElementTagColor, Size, 1 - Visuals.ESPVisuals_ElementTagTransparency)
 						end
-
-						ImDrawing.Text(Vector2.new(X, Y), Text, Visuals.ESPVisuals_HeadTagColor, Size, 1 - Visuals.ESPVisuals_HeadTagTransparency)
 					end
 				end
 
 				if Healthbars then
-					local Position, Thickness = Visuals.ESPVisuals_HealthbarPosition, Visuals.ESPVisuals_HealthbarWidth
-					local Horizontal = Position == "Top" or Position == "Bottom"
+					local _Position, Thickness = Visuals.ESPVisuals_HealthbarPosition, Visuals.ESPVisuals_HealthbarWidth
+					local Horizontal = _Position == "Top" or _Position == "Bottom"
 					local Length = math.max(6, Horizontal and BoxRight - BoxLeft or BoxHeight)
 					local Width, Height, Opacity = Horizontal and Length or Thickness, Horizontal and Thickness or Length, 1 - Visuals.ESPVisuals_HealthbarTransparency
 					local BarPosition = Vector2.new(
-						Horizontal and BoxLeft or Position == "Left" and BoxLeft - Thickness - 3 or BoxRight + 3,
-						Horizontal and (Position == "Top" and BoxTop - Thickness - 3 or BoxBottom + 3) or BoxTop
+						Horizontal and BoxLeft or _Position == "Left" and BoxLeft - Thickness - 3 or BoxRight + 3,
+						Horizontal and (_Position == "Top" and BoxTop - Thickness - 3 or BoxBottom + 3) or BoxTop
 					)
 
-					local Fraction = MaxHealth > 0 and math.clamp(Health / MaxHealth, 0, 1) or 0
-
 					ImDrawing.Box(true, BarPosition, Vector2.new(Width, Height), Color3.new(0, 0, 0), 1, Opacity)
+					local Fraction = MaxHealth > 0 and math.clamp(Health / MaxHealth, 0, 1) or 0
 					if Fraction > 0 then
 						local FillWidth = math.max(1, Horizontal and math.floor((Width - 2) * Fraction) or Width - 2)
 						local FillHeight = math.max(1, Horizontal and Height - 2 or math.floor((Height - 2) * Fraction))
@@ -2036,9 +2083,9 @@ function ESPModule:Update(LocalHeadPosition, Now)
 			ESPJointCache[11] = RightArm.CFrame * Offset
 
 			for Index = 1, 11 do
-				local Position = ESPJointCache[Index]
-				if Position then
-					local Screen, OnScreen = WorldToViewportPoint(Position)
+				local _Position = ESPJointCache[Index]
+				if _Position then
+					local Screen, OnScreen = WorldToViewportPoint(_Position)
 					ESPScreenCache[Index] = OnScreen and Screen
 				else
 					ESPScreenCache[Index] = nil
@@ -2508,9 +2555,9 @@ function ThirdPersonModule:Update(DeltaTime)
 	FakeReplicationObject._lookangles.t = Angles
 	FakeReplicationObject._lookangles.p = Angles
 
-	local ClockTime, TickTime = os.clock(), tick()
-	FakeReplicationObject._smoothReplication:receive(ClockTime, TickTime, {
-		t = TickTime, position = Position, velocity = Velocity,
+	local Time = GetTime()
+	FakeReplicationObject._smoothReplication:receive(os.clock(), Time, {
+		t = Time, position = Position, velocity = Velocity,
 		angles = Angles, barrelAngles = Miscellaneous.AntiAim_Enabled and Angles * 0.99 or Vector3.zero, breakcount = 0
 	}, true)
 
@@ -2747,6 +2794,14 @@ function AimingModule:UpdateAimbot(LocalHeadPosition, Now)
 	local FOVOrigin = ShowFOV and Aiming.Aimbot_FOVCircleFollowRecoil and GetRecoilPosition() or ScreenCenter
 	local FOVRadius = ShowFOV and Aiming.Aimbot_FOVCircleRadius or math.huge
 	if ShowFOV then
+		local Center = FOVOrigin
+		local TargetPart = Aiming.Aimbot_FOVCircleFollowTarget and IsSpawned and AimbotState.TargetPart
+		if TargetPart and CachedPlayers[AimbotState.Target] then
+			local Screen, OnScreen = WorldToViewportPoint(TargetPart.Position)
+			if OnScreen then
+				Center = Screen
+			end
+		end
 		local Radius = FOVRadius
 		if Aiming.Aimbot_FOVCircleFireExpansion then
 			local Progress = math.clamp(1 - (Now - LastFire) / Aiming.Aimbot_FOVCircleFireDuration, 0, 1)
@@ -2757,10 +2812,10 @@ function AimingModule:UpdateAimbot(LocalHeadPosition, Now)
 		local Color, Thickness, Opacity, Filled = Aiming.Aimbot_FOVCircleColor, Aiming.Aimbot_FOVCircleThickness, Aiming.Aimbot_FOVCircleOpacity, Aiming.Aimbot_FOVCircleFilled
 		if Aiming.Aimbot_FOVCircleDotted and not Filled then
 			for _,Offset in ipairs(FOVCircleDots) do
-				ImDrawing.Circle(true, FOVOrigin + Offset * Radius, Thickness, Color, 1, Opacity)
+				ImDrawing.Circle(true, Center + Offset * Radius, Thickness, Color, 1, Opacity)
 			end
 		else
-			ImDrawing.Circle(Filled, FOVOrigin, Radius, Color, Thickness, Opacity)
+			ImDrawing.Circle(Filled, Center, Radius, Color, Thickness, Opacity)
 		end
 	end
 
@@ -2940,7 +2995,8 @@ function AimingModule:UpdateRageBot()
 
 	local Time, WeaponData = GetTime(), Weapon._weaponData
 	local PenetrationDepth, BulletSpeed = WeaponData.penetrationdepth, WeaponData.bulletspeed
-	local ShotInterval = 60 / (WeaponData.variablefirerate and WeaponData.firerate[Weapon._firemodeIndex] or WeaponData.firerate) / (Miscellaneous.WeaponMods_RapidFire and 1.5 or 1)
+	local RapidFireAmount = Miscellaneous.WeaponMods_RapidFire and Miscellaneous.WeaponMods_RapidFireAmount
+	local ShotInterval = 60 / (WeaponData.variablefirerate and WeaponData.firerate[Weapon._firemodeIndex] or WeaponData.firerate) / (RapidFireAmount and math.min(RapidFireAmount, 1.1) or 1)
 	local PenetrationDetection, TargetName = Aiming.RageBot_WallPenetrationDetection, Aiming.RageBot_Part
 	local IsBest = TargetName == "Best"
 	local Count, Lifetime = IsBest and 6 or 1, BulletSpeed * BulletLifetime
@@ -3141,6 +3197,18 @@ function AimingModule:UpdateRageBot()
 				NetworkClientSend(NetworkClient, "bullethit", UniqueId, Player, Target, HitPartName, Bullets[_Index][2], Time)
 			end
 
+			if RapidFireAmount then
+				local WeaponIndex = Weapon.weaponIndex
+				for _ = 1, RapidFireAmount < 1.3 and 1 or 2 do
+					for _Index = 1, PelletCount do
+						NetworkClientSend(NetworkClient, "bullethit", UniqueId, Player, Target, HitPartName, Bullets[_Index][2], Time)
+					end
+				end
+				NetworkClientSend("equip", 2, Time)
+				NetworkClientSend("equip", 3, Time)
+				NetworkClientSend("equip", WeaponIndex, Time)
+			end
+
 			if Aiming.RageBot_Collateral then
 				local BacktrackTime = os.clock() - Aiming.RageBot_BacktrackTime * 0.001
 				for _Index = 1, EntryCount do
@@ -3303,7 +3371,7 @@ ns__hooktablefunction(Module.__get("BulletObject"), "new", function(Original, Da
 	end
 
 	if Miscellaneous.WeaponMods_InstantBullet then
-		local Steps = math.max(1, math.ceil(Data.life * 240))
+		local Steps = math.max(1, math.ceil(Data.life * 60))
 		local Delta = Data.life / Steps
 		for _ = 1, Steps do
 			if Bullet.pendingDeletion then
@@ -3455,24 +3523,6 @@ ReplicatedStorage:WaitForChild("RemoteEvent", 6e9).OnClientEvent:Connect(functio
 			return
 		end
 
-		if Miscellaneous.HitLogs_Enabled then
-			local Text = {"Hit " .. (...).Name}
-
-			if Miscellaneous.HitLogs_ShowPart and select(2, ...) then
-				table.insert(Text, "in the " .. select(2, ...))
-			end
-
-			if Miscellaneous.HitLogs_ShowDamage then
-				table.insert(Text, "for " .. math.floor(select(4, ...) or 0) .. " damage")
-			end
-
-			if Miscellaneous.HitLogs_ShowDistance then
-				table.insert(Text, "from " .. math.floor((GetLocalPosition() - select(3, ...)).Magnitude) .. " studs away")
-			end
-
-			Library:Notify(table.concat(Text, " "), 3)
-		end
-
 		if Visuals.Combat_HitMarkers then
 			table.insert(HitMarkerModule.Active, {
 				Position = select(3, ...),
@@ -3518,6 +3568,24 @@ ReplicatedStorage:WaitForChild("RemoteEvent", 6e9).OnClientEvent:Connect(functio
 					RenderHitGhost(ThirdPersonObject._characterModel:Clone())
 				end
 			end
+		end
+
+		if Visuals.HitLogs_Enabled then
+			local Text = {"Hit " .. (...).Name}
+
+			if Visuals.HitLogs_ShowPart and select(2, ...) then
+				table.insert(Text, "in the " .. select(2, ...))
+			end
+
+			if Visuals.HitLogs_ShowDamage then
+				table.insert(Text, "for " .. math.floor(select(4, ...) or 0) .. " damage")
+			end
+
+			if Visuals.HitLogs_ShowDistance then
+				table.insert(Text, "from " .. math.floor((GetLocalPosition() - select(3, ...)).Magnitude) .. " studs away")
+			end
+
+			Library:Notify(table.concat(Text, " "), 3)
 		end
 	end
 end)
@@ -3772,6 +3840,15 @@ NetworkClient.send = function(self, Packet, ...)
 		end
 
 		LastHit[Player] = true
+
+		if Miscellaneous.WeaponMods_RapidFire then
+			local WeaponIndex = GetActiveWeapon().weaponIndex
+			for _ = 1, 3 do
+				NetworkClientSend(self, Packet, UniqueId, Player, Position, PartName, Ticket, Time)
+				NetworkClientSend("equip", 3, Time)
+				NetworkClientSend("equip", WeaponIndex, Time)
+			end
+		end
 		NetworkClientSend(self, Packet, UniqueId, Player, Position, PartName, Ticket, Time)
 
 		if Aiming.Aimbot_Enabled and Aiming.Aimbot_Type == "Silent" and Aiming.Aimbot_Collateral then
