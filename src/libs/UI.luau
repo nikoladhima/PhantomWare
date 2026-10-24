@@ -18,6 +18,8 @@ local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local CoreGui = ns__cloneref(game:GetService("CoreGui"))
 local Players = game:GetService("Players")
+local Stats = game:GetService("Stats")
+local DataPing = Stats:WaitForChild("Network", 9e9):WaitForChild("ServerStatsItem", 9e9):WaitForChild("Data Ping", 9e9)
 
 local PreRender = RunService.PreRender
 local Heartbeat = RunService.Heartbeat
@@ -56,6 +58,12 @@ local Library = {
 
     ScreenGui = ScreenGui
 }
+
+UserInputService.InputEnded:Connect(function(Input)
+    if Library.ToggleInput == Input then
+        Library.ToggleInput = nil
+    end
+end)
 
 local UITweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local ToggleTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -1669,7 +1677,7 @@ do
         end
 
         UserInputService.InputBegan:Connect(function(Input)
-            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 or not Library:IsInputActive(ConfigOuter) then
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 or Library.ToggleInput == Input or not Library:IsInputActive(ConfigOuter) then
                 return
             end
 
@@ -2118,6 +2126,7 @@ do
 
         ToggleRegion.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame(ToggleRegion, ToggleOuter) then
+                Library.ToggleInput = Input
                 Toggle:SetValue(not Toggle.Value)
             end
         end)
@@ -2230,14 +2239,14 @@ do
                 Slider.MaxSize = BarWidth
             end
 
-            local Suffix = Info.Suffix or ''
+            local Prefix, Suffix = Info.Prefix or '', Info.Suffix or ''
 
             if Info.Compact then
-                DisplayLabel.Text = Info.Text .. ': ' .. Slider.Value .. Suffix
+                DisplayLabel.Text = Info.Text .. ': ' .. Prefix .. Slider.Value .. Suffix
             elseif Info.HideMax then
-                DisplayLabel.Text = Slider.Value .. Suffix
+                DisplayLabel.Text = Prefix .. Slider.Value .. Suffix
             else
-                DisplayLabel.Text = string.format('%s/%s', Slider.Value .. Suffix, Slider.Max .. Suffix)
+                DisplayLabel.Text = string.format('%s/%s', Prefix .. Slider.Value .. Suffix, Prefix .. Slider.Max .. Suffix)
             end
 
             local X = math.ceil(Library:MapValue(Slider.Value, Slider.Min, Slider.Max, 0, Slider.MaxSize))
@@ -2499,7 +2508,7 @@ do
             local Str = ''
 
             if Info.Multi then
-                for Index, Value in next, Values do
+                for _,Value in next, Values do
                     if Dropdown.Value[Value] then
                         Str = Str .. Value .. ', '
                     end
@@ -2792,7 +2801,7 @@ do
         return Dropdown
     end
 
-    function Funcs:AddDependencyBox()
+    function Funcs:AddDependencyBox(StanceOverride)
         local Depbox = {Dependencies = {}}
 
         local Groupbox = self
@@ -2834,27 +2843,34 @@ do
             Depbox:Resize()
         end)
 
-        function Depbox:Update()
-            for _,Dependency in next, Depbox.Dependencies do
-                local Elem = Dependency[1]
-                local Value = Dependency[2]
-                local Match = false
-
-                if type(Value) == "table" then
-                    Match = table.find(Value, Elem.Value)
-                else
-                    Match = (Elem.Value == Value)
-                end
-
-                if not Match then
-                    Holder.Visible = false
-                    Depbox:Resize()
-                    return
-                end
+        if StanceOverride then
+            local Settings, Prefix = StanceOverride[1], StanceOverride[2]
+            function Depbox:Update()
+                Holder.Visible = not (Settings[Prefix .. "StanceOverride"] and Settings[Prefix .. "Standing"] and Settings[Prefix .. "Crouch"] and Settings[Prefix .. "Prone"])
             end
+        else
+            function Depbox:Update()
+                for _,Dependency in next, Depbox.Dependencies do
+                    local Elem = Dependency[1]
+                    local Value = Dependency[2]
+                    local Match = false
 
-            Holder.Visible = true
-            Depbox:Resize()
+                    if type(Value) == "table" then
+                        Match = table.find(Value, Elem.Value)
+                    else
+                        Match = (Elem.Value == Value)
+                    end
+
+                    if not Match then
+                        Holder.Visible = false
+                        Depbox:Resize()
+                        return
+                    end
+                end
+
+                Holder.Visible = true
+                Depbox:Resize()
+            end
         end
 
         function Depbox:SetupDependencies(Dependencies)
@@ -3011,10 +3027,7 @@ Library.WatermarkOptions = {Enabled = false, Color = Color3.fromRGB(255, 255, 25
 Library.WatermarkState = {Frames = 0, LastUpdate = 0}
 
 function Library:GetPing()
-    local Success, Value = pcall(function()
-        return game:GetService("Stats").PerformanceStats.Ping:GetValue()
-    end)
-    return Success and math.floor(Value) or 0
+    return math.floor(DataPing:GetValue())
 end
 
 function Library:UpdateWatermark()
@@ -3108,6 +3121,19 @@ local function ValidateConfig(Data)
         return false, "Invalid configuration data."
     end
 
+    for _,Suffix in {"s", "Color", "Transparency", "PixelOffset", "PixelOffsetSize", "StaticElements", "StaticPosition", "StatusElements", "StatusPosition", "Size", "Position"} do
+        local Flag, OldFlag = "ESPVisuals_ElementTag" .. Suffix, "ESPVisuals_HeadTag" .. Suffix
+        Data[Flag] = Data[Flag] or Data[OldFlag]
+        Data[OldFlag] = nil
+    end
+
+    local Position = Data.ESPVisuals_ElementTagPosition
+    if Position then
+        Data.ESPVisuals_ElementTagStaticPosition = Data.ESPVisuals_ElementTagStaticPosition or Position
+        Data.ESPVisuals_ElementTagStatusPosition = Data.ESPVisuals_ElementTagStatusPosition or Position
+        Data.ESPVisuals_ElementTagPosition = nil
+    end
+
     for Flag, Saved in next, Data do
         if type(Flag) ~= "string" or type(Saved) ~= "table" or type(Saved.Type) ~= "string" or Saved.Value == nil then
             return false, "Invalid config entry: " .. tostring(Flag)
@@ -3129,10 +3155,10 @@ local function ValidateConfig(Data)
                 if Option.Multi then
                     Valid = type(Value) == "table"
                     if Valid then
-                        if Flag == "ESPVisuals_HeadTagStaticElements" then
+                        if Flag == "ESPVisuals_ElementTagStaticElements" then
                             Value.Stance = nil
                             Value.Ammo = nil
-                        elseif Flag == "ESPVisuals_HeadTagStatusElements" then
+                        elseif Flag == "ESPVisuals_ElementTagStatusElements" then
                             Value.Grenade = nil
                             Value.Reloading = nil
                         end
@@ -3967,6 +3993,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         FOVMenu:AddToggle("Aimbot_FOVCircleFollowRecoil", {Text = "Follow Recoil", Default = UIState[1].Aimbot_FOVCircleFollowRecoil, Callback = function(Value)
             UIState[1].Aimbot_FOVCircleFollowRecoil = Value
         end})
+        FOVMenu:AddToggle("Aimbot_FOVCircleFollowTarget", {Text = "Follow Target", Default = UIState[1].Aimbot_FOVCircleFollowTarget, Callback = function(Value)
+            UIState[1].Aimbot_FOVCircleFollowTarget = Value
+        end})
 
         AimbotDependencyBox:AddToggle("Aimbot_TargetTracer", {Text = "Target Tracer", Default = UIState[1].Aimbot_TargetTracer, Callback = function(Value)
             UIState[1].Aimbot_TargetTracer = Value
@@ -4291,6 +4320,19 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].Combat_HitGhostsOnKillOnly = Value
         end})
 
+        local HitLogsMenu = Visuals_CombatGroupbox:AddToggle("HitLogs_Enabled", {Text = "Hit Logs", Default = UIState[2].HitLogs_Enabled, Callback = function(Value)
+            UIState[2].HitLogs_Enabled = Value
+        end}):AddSettingsMenu("Hit Log Settings")
+        HitLogsMenu:AddToggle("HitLogs_ShowDamage", {Text = "Show Damage", Default = UIState[2].HitLogs_ShowDamage, Callback = function(Value)
+            UIState[2].HitLogs_ShowDamage = Value
+        end})
+        HitLogsMenu:AddToggle("HitLogs_ShowDistance", {Text = "Show Distance", Default = UIState[2].HitLogs_ShowDistance, Callback = function(Value)
+            UIState[2].HitLogs_ShowDistance = Value
+        end})
+        HitLogsMenu:AddToggle("HitLogs_ShowPart", {Text = "Show Part", Default = UIState[2].HitLogs_ShowPart, Callback = function(Value)
+            UIState[2].HitLogs_ShowPart = Value
+        end})
+
         Visuals_CombatGroupbox:AddDivider()
 
         Visuals_CombatGroupbox:AddToggle("Combat_RadarHack", {Text = "Radar Hack", Default = UIState[2].Combat_RadarHack, Callback = function(Value)
@@ -4339,51 +4381,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         HighlightChamsMenu:AddSlider("ESPVisuals_HighlightChamTransparency", {Text = "Transparency", Default = UIState[2].ESPVisuals_HighlightChamTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(Value)
             UIState[2].ESPVisuals_HighlightChamTransparency = Value
         end})
-        ESPVisualsDependencies:AddDivider()
-
-        local Skeletons_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Skeletons", {Text = "Skeletons", Default = UIState[2].ESPVisuals_Skeletons, Callback = function(Value)
-            UIState[2].ESPVisuals_Skeletons = Value
-        end}):AddSettingsMenu("Skeleton Settings")
-        Skeletons_Menu:AddColorPicker("ESPVisuals_SkeletonColor", {Default = UIState[2].ESPVisuals_SkeletonColor, Transparency = UIState[2].ESPVisuals_SkeletonTransparency, Callback = function(Value, Transparency)
-            UIState[2].ESPVisuals_SkeletonColor = Value
-            UIState[2].ESPVisuals_SkeletonTransparency = Transparency
-        end})
-        Skeletons_Menu:AddSlider("ESPVisuals_SkeletonThickness", {
-            Text = "Thickness", Default = UIState[2].ESPVisuals_SkeletonThickness, Min = 1, Max = 3.5, Rounding = 1, Callback = function(Value)
-                UIState[2].ESPVisuals_SkeletonThickness = Value
-            end
-        })
-        Skeletons_Menu:AddToggle("ESPVisuals_SkeletonHeadDot", {Text = "Head Dot", Default = UIState[2].ESPVisuals_SkeletonHeadDot, Callback = function(Value)
-            UIState[2].ESPVisuals_SkeletonHeadDot = Value
-        end})
-
-        ESPVisualsDependencies:AddDivider()
-
-        local HeadTags_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_HeadTags", {Text = "Head Tags", Default = UIState[2].ESPVisuals_HeadTags, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTags = Value
-        end}):AddSettingsMenu("Head Tag Settings")
-        HeadTags_Menu:AddColorPicker("ESPVisuals_HeadTagColor", {Default = UIState[2].ESPVisuals_HeadTagColor, Transparency = UIState[2].ESPVisuals_HeadTagTransparency, Callback = function(Value, Transparency)
-            UIState[2].ESPVisuals_HeadTagColor = Value
-            UIState[2].ESPVisuals_HeadTagTransparency = Transparency
-        end})
-        HeadTags_Menu:AddToggle("ESPVisuals_HeadTagPixelOffset", {Text = "Pixel Offset", Default = UIState[2].ESPVisuals_HeadTagPixelOffset, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagPixelOffset = Value
-        end})
-        HeadTags_Menu:AddDependencyBox():SetupDependencies({{Toggles.ESPVisuals_HeadTagPixelOffset, true}}):AddSlider("ESPVisuals_HeadTagPixelOffsetSize", {Text = "Size", Default = UIState[2].ESPVisuals_HeadTagPixelOffsetSize, Min = -10, Max = 10, Rounding = 0, Suffix = "px", Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagPixelOffsetSize = Value
-        end})
-        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagStaticElements", {Text = "Static Elements", Default = UIState[2].ESPVisuals_HeadTagStaticElements, Values = {"Name", "Health", "Distance", "Weapon"}, Multi = true, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagStaticElements = Value
-        end})
-        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagStatusElements", {Text = "Status Elements", Default = UIState[2].ESPVisuals_HeadTagStatusElements, Values = {"Aiming", "Sprinting", "Crouching", "Prone"}, Multi = true, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagStatusElements = Value
-        end})
-        HeadTags_Menu:AddDropdown("ESPVisuals_HeadTagPosition", {Text = "Position", Default = UIState[2].ESPVisuals_HeadTagPosition, Values = {"Top", "Bottom", "Left", "Right"}, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagPosition = Value
-        end})
-        HeadTags_Menu:AddSlider("ESPVisuals_HeadTagSize", {Text = "Size", Default = UIState[2].ESPVisuals_HeadTagSize, Min = 8, Max = 20, Rounding = 0, Callback = function(Value)
-            UIState[2].ESPVisuals_HeadTagSize = Value
-        end})
 
         ESPVisualsDependencies:AddDivider()
 
@@ -4402,6 +4399,24 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[2].ESPVisuals_BoxThickness = Value
             end
         })
+
+        ESPVisualsDependencies:AddDivider()
+
+        local Skeletons_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Skeletons", {Text = "Skeletons", Default = UIState[2].ESPVisuals_Skeletons, Callback = function(Value)
+            UIState[2].ESPVisuals_Skeletons = Value
+        end}):AddSettingsMenu("Skeleton Settings")
+        Skeletons_Menu:AddColorPicker("ESPVisuals_SkeletonColor", {Default = UIState[2].ESPVisuals_SkeletonColor, Transparency = UIState[2].ESPVisuals_SkeletonTransparency, Callback = function(Value, Transparency)
+            UIState[2].ESPVisuals_SkeletonColor = Value
+            UIState[2].ESPVisuals_SkeletonTransparency = Transparency
+        end})
+        Skeletons_Menu:AddSlider("ESPVisuals_SkeletonThickness", {
+            Text = "Thickness", Default = UIState[2].ESPVisuals_SkeletonThickness, Min = 1, Max = 3.5, Rounding = 1, Callback = function(Value)
+                UIState[2].ESPVisuals_SkeletonThickness = Value
+            end
+        })
+        Skeletons_Menu:AddToggle("ESPVisuals_SkeletonHeadDot", {Text = "Head Dot", Default = UIState[2].ESPVisuals_SkeletonHeadDot, Callback = function(Value)
+            UIState[2].ESPVisuals_SkeletonHeadDot = Value
+        end})
 
         ESPVisualsDependencies:AddDivider()
 
@@ -4425,6 +4440,37 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[2].ESPVisuals_HealthbarWidth = Value
             end
         })
+
+        ESPVisualsDependencies:AddDivider()
+
+        local ElementTags_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_ElementTags", {Text = "Element Tags", Default = UIState[2].ESPVisuals_ElementTags, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTags = Value
+        end}):AddSettingsMenu("Element Tag Settings")
+        ElementTags_Menu:AddColorPicker("ESPVisuals_ElementTagColor", {Default = UIState[2].ESPVisuals_ElementTagColor, Transparency = UIState[2].ESPVisuals_ElementTagTransparency, Callback = function(Value, Transparency)
+            UIState[2].ESPVisuals_ElementTagColor = Value
+            UIState[2].ESPVisuals_ElementTagTransparency = Transparency
+        end})
+        ElementTags_Menu:AddToggle("ESPVisuals_ElementTagPixelOffset", {Text = "Pixel Offset", Default = UIState[2].ESPVisuals_ElementTagPixelOffset, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagPixelOffset = Value
+        end})
+        ElementTags_Menu:AddDependencyBox():SetupDependencies({{Toggles.ESPVisuals_ElementTagPixelOffset, true}}):AddSlider("ESPVisuals_ElementTagPixelOffsetSize", {Text = "Size", Default = UIState[2].ESPVisuals_ElementTagPixelOffsetSize, Min = -10, Max = 10, Rounding = 0, Suffix = "px", Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagPixelOffsetSize = Value
+        end})
+        ElementTags_Menu:AddDropdown("ESPVisuals_ElementTagStaticElements", {Text = "Static Elements", Default = UIState[2].ESPVisuals_ElementTagStaticElements, Values = {"Name", "Health", "Distance", "Weapon"}, Multi = true, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagStaticElements = Value
+        end})
+        ElementTags_Menu:AddDropdown("ESPVisuals_ElementTagStaticPosition", {Text = "Static Position", Default = UIState[2].ESPVisuals_ElementTagStaticPosition, Values = {"Top", "Bottom", "Left", "Right"}, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagStaticPosition = Value
+        end})
+        ElementTags_Menu:AddDropdown("ESPVisuals_ElementTagStatusElements", {Text = "Status Elements", Default = UIState[2].ESPVisuals_ElementTagStatusElements, Values = {"Aiming", "Sprinting", "Crouching", "Prone"}, Multi = true, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagStatusElements = Value
+        end})
+        ElementTags_Menu:AddDropdown("ESPVisuals_ElementTagStatusPosition", {Text = "Status Position", Default = UIState[2].ESPVisuals_ElementTagStatusPosition, Values = {"Top", "Bottom", "Left", "Right"}, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagStatusPosition = Value
+        end})
+        ElementTags_Menu:AddSlider("ESPVisuals_ElementTagSize", {Text = "Size", Default = UIState[2].ESPVisuals_ElementTagSize, Min = 8, Max = 20, Rounding = 0, Callback = function(Value)
+            UIState[2].ESPVisuals_ElementTagSize = Value
+        end})
 
         ESPVisualsDependencies:AddDivider()
 
@@ -4782,6 +4828,8 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         Miscellaneous_WeaponMods:AddToggle("WeaponMods_RapidFire", {Text = "Rapid Fire [EXPERIMENTAL]", Default = UIState[3].WeaponMods_RapidFire, Callback = function(Value)
             UIState[3].WeaponMods_RapidFire = Value
+        end}):AddSettingsMenu("Rapid Fire Settings"):AddSlider("WeaponMods_RapidFireAmount", {Text = "Amount", Default = UIState[3].WeaponMods_RapidFireAmount, Min = 1, Max = 1.5, Rounding = 2, Prefix = "x", Callback = function(Value)
+            UIState[3].WeaponMods_RapidFireAmount = Value
         end})
 
         Miscellaneous_WeaponMods:AddDivider()
@@ -4844,19 +4892,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        local HitLogsMenu = MiscellaneousTab:AddLeftGroupbox("Hit Logs"):AddToggle("HitLogs_Enabled", {Text = "Enabled", Default = UIState[3].HitLogs_Enabled, Callback = function(Value)
-            UIState[3].HitLogs_Enabled = Value
-        end}):AddSettingsMenu("Hit Log Settings")
-        HitLogsMenu:AddToggle("HitLogs_ShowDamage", {Text = "Show Damage", Default = UIState[3].HitLogs_ShowDamage, Callback = function(Value)
-            UIState[3].HitLogs_ShowDamage = Value
-        end})
-        HitLogsMenu:AddToggle("HitLogs_ShowDistance", {Text = "Show Distance", Default = UIState[3].HitLogs_ShowDistance, Callback = function(Value)
-            UIState[3].HitLogs_ShowDistance = Value
-        end})
-        HitLogsMenu:AddToggle("HitLogs_ShowPart", {Text = "Show Part", Default = UIState[3].HitLogs_ShowPart, Callback = function(Value)
-            UIState[3].HitLogs_ShowPart = Value
-        end})
-
         local function PlaySound(Value)
             if Value ~= "None"  then
                 task.spawn(UIFeatures[8], UIFeatures[6][Value], 1, 1)
@@ -4916,9 +4951,21 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local FlyMenu = Toggles.Movement_Fly:AddSettingsMenu("Fly Settings")
         FlyMenu:AddKeyPicker("Movement_FlyKeybind", {Default = "None", Mode = "Toggle", Text = "Fly", SyncToggleState = true})
-        FlyMenu:AddSlider("Movement_FlySpeed", {Text = "Speed", Default = UIState[3].Movement_FlySpeed, Min = 0, Max = 50, Rounding = 0, Callback = function(Value)
+        FlyMenu:AddDependencyBox({UIState[3], "Movement_Fly"}):AddSlider("Movement_FlySpeed", {Text = "Speed", Default = UIState[3].Movement_FlySpeed, Min = 0, Max = 50, Rounding = 0, Callback = function(Value)
             UIState[3].Movement_FlySpeed = Value
         end})
+        local FlyStanceMenu = FlyMenu:AddToggle("Movement_FlyStanceOverride", {Text = "Stance Override", Default = UIState[3].Movement_FlyStanceOverride, Callback = function(Value)
+            UIState[3].Movement_FlyStanceOverride = Value
+        end}):AddSettingsMenu("Stance Override Settings")
+        for _,Stance in {"Standing", "Crouch", "Prone"} do
+            local Flag = "Movement_Fly" .. Stance
+            local StanceMenu = FlyStanceMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
+                UIState[3][Flag] = Value
+            end}):AddSettingsMenu(Stance .. " Fly Settings")
+            StanceMenu:AddSlider(Flag .. "Amount", {Text = "Amount", Default = UIState[3][Flag .. "Amount"], Min = 0, Max = 50, Rounding = 0, Callback = function(Value)
+                UIState[3][Flag .. "Amount"] = Value
+            end})
+        end
 
         Miscellaneous_Movement:AddToggle("Movement_Speed", {Text = "Speed", Default = UIState[3].Movement_Speed, Callback = function(Value)
             UIState[3].Movement_Speed = Value
@@ -4926,9 +4973,21 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         local SpeedMenu = Toggles.Movement_Speed:AddSettingsMenu("Speed Settings")
         SpeedMenu:AddKeyPicker("Movement_SpeedKeybind", {Default = "None", Mode = "Toggle", Text = "Speed", SyncToggleState = true})
-        SpeedMenu:AddSlider("Movement_SpeedAmount", {Text = "Amount", Default = UIState[3].Movement_SpeedAmount, Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
+        SpeedMenu:AddDependencyBox({UIState[3], "Movement_Speed"}):AddSlider("Movement_SpeedAmount", {Text = "Amount", Default = UIState[3].Movement_SpeedAmount, Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
             UIState[3].Movement_SpeedAmount = Value
         end})
+        local StanceOverrideMenu = SpeedMenu:AddToggle("Movement_SpeedStanceOverride", {Text = "Stance Override", Default = UIState[3].Movement_SpeedStanceOverride, Callback = function(Value)
+            UIState[3].Movement_SpeedStanceOverride = Value
+        end}):AddSettingsMenu("Stance Override Settings")
+        for _,Stance in {"Standing", "Crouch", "Prone"} do
+            local Flag = "Movement_Speed" .. Stance
+            local StanceMenu = StanceOverrideMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
+                UIState[3][Flag] = Value
+            end}):AddSettingsMenu(Stance .. " Speed Settings")
+            StanceMenu:AddSlider(Flag .. "Amount", {Text = "Amount", Default = UIState[3][Flag .. "Amount"], Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
+                UIState[3][Flag .. "Amount"] = Value
+            end})
+        end
 
         Miscellaneous_Movement:AddToggle("Movement_InfiniteStamina", {Text = "Infinite Stamina", Default = UIState[3].Movement_InfiniteStamina, Callback = function(Value)
             UIState[3].Movement_InfiniteStamina = Value
@@ -5094,13 +5153,13 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         end})
 
-        local Settings_Advanced = SettingsTab:AddRightGroupbox("Advanced")
-        Settings_Advanced:AddSlider("Advanced_MultiPointScale", {Text = "Multi-Point Raycasting Scale", Default = UIState[4].Advanced_MultiPointScale, Min = 2, Max = 10, Rounding = 0, Callback = function(Value)
-            UIState[4].Advanced_MultiPointScale = Value
+        local Settings_Others = SettingsTab:AddRightGroupbox("Others")
+        Settings_Others:AddSlider("Others_MultiPointScale", {Text = "Multi-Point Raycasting Scale", Default = UIState[4].Others_MultiPointScale, Min = 2, Max = 10, Rounding = 0, Callback = function(Value)
+            UIState[4].Others_MultiPointScale = Value
             UIFeatures[12]()
         end})
 
-        Settings_Advanced:AddButton({Text = "Server Hop", Func = function()
+        Settings_Others:AddButton({Text = "Server Hop", Func = function()
             local TeleportService = game:GetService("TeleportService")
             local Success, Error
             for _ = 1, 5 do
@@ -5124,7 +5183,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             self:Notify("Rejoin failed: " .. tostring(Error), 5)
         end})
 
-        Settings_Advanced:AddLabel("Module Method: " .. GameData[4])
+        Settings_Others:AddLabel("Module Method: " .. GameData[4])
     end
 
     local function Build_ConfigsTab()
