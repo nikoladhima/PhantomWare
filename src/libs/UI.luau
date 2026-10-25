@@ -2846,7 +2846,7 @@ do
         if StanceOverride then
             local Settings, Prefix = StanceOverride[1], StanceOverride[2]
             function Depbox:Update()
-                Holder.Visible = not (Settings[Prefix .. "StanceOverride"] and Settings[Prefix .. "Standing"] and Settings[Prefix .. "Crouch"] and Settings[Prefix .. "Prone"])
+                Holder.Visible = not (Settings[Prefix .. "StanceOverride"] and Settings[Prefix .. "Stand"] and Settings[Prefix .. "Crouch"] and Settings[Prefix .. "Prone"])
             end
         else
             function Depbox:Update()
@@ -3120,6 +3120,9 @@ local function ValidateConfig(Data)
     if type(Data) ~= "table" then
         return false, "Invalid configuration data."
     end
+
+    Data.ESPVisuals_MultiPointScale = Data.ESPVisuals_MultiPointScale or Data.Others_MultiPointScale
+    Data.Others_MultiPointScale = nil
 
     for _,Suffix in {"s", "Color", "Transparency", "PixelOffset", "PixelOffsetSize", "StaticElements", "StaticPosition", "StatusElements", "StatusPosition", "Size", "Position"} do
         local Flag, OldFlag = "ESPVisuals_ElementTag" .. Suffix, "ESPVisuals_HeadTag" .. Suffix
@@ -4093,7 +4096,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local Visuals_ESPVisualsGroupbox = VisualsTab:AddLeftGroupbox("ESP Visuals")
         local Visuals_CombatGroupbox = VisualsTab:AddRightGroupbox("Combat")
 
-        local World_Tabbox = VisualsTab:AddRightTabbox()
+        local World_Tabbox = VisualsTab:AddLeftTabbox()
         local World_Camera = World_Tabbox:AddTab("Camera")
         local World_Lighting = World_Tabbox:AddTab("Lighting")
         local World_ViewModel = World_Tabbox:AddTab("ViewModel")
@@ -4346,6 +4349,8 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_MasterSwitch = Value
         end})
 
+        Visuals_ESPVisualsGroupbox:AddDivider()
+
         local ESPVisualsDependencies = Visuals_ESPVisualsGroupbox:AddDependencyBox():SetupDependencies({{Toggles.ESPVisuals_MasterSwitch, true}})
 
         local MasterSwitchMenu = Toggles.ESPVisuals_MasterSwitch:AddSettingsMenu("Master Switch Settings")
@@ -4355,8 +4360,10 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         MasterSwitchMenu:AddToggle("ESPVisuals_PerformanceMode", {Text = "Performance Mode", Default = UIState[2].ESPVisuals_PerformanceMode, Callback = function(Value)
             UIState[2].ESPVisuals_PerformanceMode = Value
         end})
-
-        ESPVisualsDependencies:AddDivider()
+        MasterSwitchMenu:AddSlider("ESPVisuals_MultiPointScale", {Text = "Multi-Point Raycasting Scale", Default = UIState[2].ESPVisuals_MultiPointScale, Min = 2, Max = 10, Rounding = 0, Callback = function(Value)
+            UIState[2].ESPVisuals_MultiPointScale = Value
+            UIFeatures[12]()
+        end})
 
         local HighlightChamsMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_HighlightChams", {Text = "Highlight Chams", Default = UIState[2].ESPVisuals_HighlightChams, Callback = function(Value)
             UIState[2].ESPVisuals_HighlightChams = Value
@@ -4382,8 +4389,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_HighlightChamTransparency = Value
         end})
 
-        ESPVisualsDependencies:AddDivider()
-
         local Boxes_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Boxes", {Text = "Boxes", Default = UIState[2].ESPVisuals_Boxes, Callback = function(Value)
             UIState[2].ESPVisuals_Boxes = Value
         end}):AddSettingsMenu("Box Settings")
@@ -4399,8 +4404,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[2].ESPVisuals_BoxThickness = Value
             end
         })
-
-        ESPVisualsDependencies:AddDivider()
 
         local Skeletons_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Skeletons", {Text = "Skeletons", Default = UIState[2].ESPVisuals_Skeletons, Callback = function(Value)
             UIState[2].ESPVisuals_Skeletons = Value
@@ -4418,7 +4421,19 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_SkeletonHeadDot = Value
         end})
 
-        ESPVisualsDependencies:AddDivider()
+        local ServerDotMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_ServerDot", {Text = "Server Dot", Default = UIState[2].ESPVisuals_ServerDot, Callback = function(Value)
+            UIState[2].ESPVisuals_ServerDot = Value
+        end}):AddSettingsMenu("Server Dot Settings")
+        ServerDotMenu:AddColorPicker("ESPVisuals_ServerDotColor", {Default = UIState[2].ESPVisuals_ServerDotColor, Transparency = UIState[2].ESPVisuals_ServerDotTransparency, Callback = function(Value, Transparency)
+            UIState[2].ESPVisuals_ServerDotColor = Value
+            UIState[2].ESPVisuals_ServerDotTransparency = Transparency
+        end})
+        ServerDotMenu:AddToggle("ESPVisuals_ServerDotFilled", {Text = "Filled", Default = UIState[2].ESPVisuals_ServerDotFilled, Callback = function(Value)
+            UIState[2].ESPVisuals_ServerDotFilled = Value
+        end})
+        ServerDotMenu:AddSlider("ESPVisuals_ServerDotSize", {Text = "Size", Default = UIState[2].ESPVisuals_ServerDotSize, Min = 1, Max = 10, Rounding = 1, Callback = function(Value)
+            UIState[2].ESPVisuals_ServerDotSize = Value
+        end})
 
         local Healthbars_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Healthbars", {Text = "Healthbars", Default = UIState[2].ESPVisuals_Healthbars, Callback = function(Value)
             UIState[2].ESPVisuals_Healthbars = Value
@@ -4440,8 +4455,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[2].ESPVisuals_HealthbarWidth = Value
             end
         })
-
-        ESPVisualsDependencies:AddDivider()
 
         local ElementTags_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_ElementTags", {Text = "Element Tags", Default = UIState[2].ESPVisuals_ElementTags, Callback = function(Value)
             UIState[2].ESPVisuals_ElementTags = Value
@@ -4472,8 +4485,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_ElementTagSize = Value
         end})
 
-        ESPVisualsDependencies:AddDivider()
-
         local Tracers_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_Tracers", {Text = "Tracers", Default = UIState[2].ESPVisuals_Tracers, Callback = function(Value)
             UIState[2].ESPVisuals_Tracers = Value
         end}):AddSettingsMenu("Tracer Settings")
@@ -4490,8 +4501,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         Tracers_Menu:AddSlider("ESPVisuals_TracerThickness", {Text = "Thickness", Default = UIState[2].ESPVisuals_TracerThickness, Min = 1, Max = 5, Rounding = 1, Callback = function(Value)
             UIState[2].ESPVisuals_TracerThickness = Value
         end})
-
-        ESPVisualsDependencies:AddDivider()
 
         local OffscreenArrows_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_OffscreenArrows", {Text = "Offscreen Arrows", Default = UIState[2].ESPVisuals_OffscreenArrows, Callback = function(Value)
             UIState[2].ESPVisuals_OffscreenArrows = Value
@@ -4510,8 +4519,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_OffscreenArrowRadius = Value
         end})
 
-        ESPVisualsDependencies:AddDivider()
-
         local SoundRingsMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_SoundRings", {Text = "Sound Rings", Default = UIState[2].ESPVisuals_SoundRings, Callback = function(Value)
             UIState[2].ESPVisuals_SoundRings = Value
         end}):AddSettingsMenu("Sound Rings Settings")
@@ -4525,8 +4532,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         SoundRingsMenu:AddSlider("ESPVisuals_SoundRingsDuration", {Text = "Duration", Default = UIState[2].ESPVisuals_SoundRingsDuration, Min = 0.3, Max = 3, Rounding = 1, Suffix = "s", Callback = function(Value)
             UIState[2].ESPVisuals_SoundRingsDuration = Value
         end})
-
-        ESPVisualsDependencies:AddDivider()
 
         local GrenadeTags_Menu = ESPVisualsDependencies:AddToggle("ESPVisuals_GrenadeTags", {Text = "Grenade Tags", Default = UIState[2].ESPVisuals_GrenadeTags, Callback = function(Value)
             UIState[2].ESPVisuals_GrenadeTags = Value
@@ -4779,18 +4784,21 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ViewModel_OffsetZ = Value
         end})
 
-        local CustomRotationMenu = World_ViewModel:AddToggle("ViewModel_CustomRotation", {Text = "Custom Rotation", Default = UIState[2].ViewModel_CustomRotation, Callback = function(Value)
-            UIState[2].ViewModel_CustomRotation = Value
-        end}):AddSettingsMenu("Custom Rotation Settings")
-        CustomRotationMenu:AddSlider("ViewModel_RotationX", {Text = "X", Default = UIState[2].ViewModel_RotationX, Min = -180, Max = 180, Rounding = 0, Callback = function(Value)
-            UIState[2].ViewModel_RotationX = Value
-        end})
-        CustomRotationMenu:AddSlider("ViewModel_RotationY", {Text = "Y", Default = UIState[2].ViewModel_RotationY, Min = -180, Max = 180, Rounding = 0, Callback = function(Value)
-            UIState[2].ViewModel_RotationY = Value
-        end})
-        CustomRotationMenu:AddSlider("ViewModel_RotationZ", {Text = "Z", Default = UIState[2].ViewModel_RotationZ, Min = -180, Max = 180, Rounding = 0, Callback = function(Value)
-            UIState[2].ViewModel_RotationZ = Value
-        end})
+        World_ViewModel:AddToggle("ViewModel_CustomPitch", {Text = "Custom Pitch", Default = UIState[2].ViewModel_CustomPitch, Callback = function(Value)
+            UIState[2].ViewModel_CustomPitch = Value
+        end}):AddSettingsMenu("Custom Pitch Settings"):AddSlider("ViewModel_Pitch", {
+            Text = "Pitch", Default = UIState[2].ViewModel_Pitch, Min = -180, Max = 180, Rounding = 0, Callback = function(Value)
+                UIState[2].ViewModel_Pitch = Value
+            end
+        })
+
+        World_ViewModel:AddToggle("ViewModel_CustomYaw", {Text = "Custom Yaw", Default = UIState[2].ViewModel_CustomYaw, Callback = function(Value)
+            UIState[2].ViewModel_CustomYaw = Value
+        end}):AddSettingsMenu("Custom Yaw Settings"):AddSlider("ViewModel_Yaw", {
+            Text = "Yaw", Default = UIState[2].ViewModel_Yaw, Min = -180, Max = 180, Rounding = 0, Callback = function(Value)
+                UIState[2].ViewModel_Yaw = Value
+            end
+        })
 
         World_ViewModel:AddToggle("ViewModel_CustomRoll", {Text = "Custom Roll", Default = UIState[2].ViewModel_CustomRoll, Callback = function(Value)
             UIState[2].ViewModel_CustomRoll = Value
@@ -4799,6 +4807,19 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[2].ViewModel_Roll = Value
             end
         })
+
+        local WeaponSpinMenu = World_ViewModel:AddToggle("ViewModel_WeaponSpin", {Text = "Weapon Spin", Default = UIState[2].ViewModel_WeaponSpin, Callback = function(Value)
+            UIState[2].ViewModel_WeaponSpin = Value
+        end}):AddSettingsMenu("Weapon Spin Settings")
+        WeaponSpinMenu:AddSlider("ViewModel_SpinX", {Text = "Pitch", Default = UIState[2].ViewModel_SpinX, Min = -5, Max = 5, Rounding = 1, Callback = function(Value)
+            UIState[2].ViewModel_SpinX = Value
+        end})
+        WeaponSpinMenu:AddSlider("ViewModel_SpinY", {Text = "Yaw", Default = UIState[2].ViewModel_SpinY, Min = -5, Max = 5, Rounding = 1, Callback = function(Value)
+            UIState[2].ViewModel_SpinY = Value
+        end})
+        WeaponSpinMenu:AddSlider("ViewModel_SpinZ", {Text = "Roll", Default = UIState[2].ViewModel_SpinZ, Min = -5, Max = 5, Rounding = 1, Callback = function(Value)
+            UIState[2].ViewModel_SpinZ = Value
+        end})
     end
 
     local function Build_MiscellaneousTab()
@@ -4822,11 +4843,11 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         Miscellaneous_WeaponMods:AddDivider()
 
-        Miscellaneous_WeaponMods:AddToggle("WeaponMods_InstantBullet", {Text = "Instant Bullet [EXPERIMENTAL]", Default = UIState[3].WeaponMods_InstantBullet, Callback = function(Value)
+        Miscellaneous_WeaponMods:AddToggle("WeaponMods_InstantBullet", {Text = "Instant Bullet [BETA]", Default = UIState[3].WeaponMods_InstantBullet, Callback = function(Value)
             UIState[3].WeaponMods_InstantBullet = Value
         end})
 
-        Miscellaneous_WeaponMods:AddToggle("WeaponMods_RapidFire", {Text = "Rapid Fire [EXPERIMENTAL]", Default = UIState[3].WeaponMods_RapidFire, Callback = function(Value)
+        Miscellaneous_WeaponMods:AddToggle("WeaponMods_RapidFire", {Text = "Rapid Fire [BETA]", Default = UIState[3].WeaponMods_RapidFire, Callback = function(Value)
             UIState[3].WeaponMods_RapidFire = Value
         end}):AddSettingsMenu("Rapid Fire Settings"):AddSlider("WeaponMods_RapidFireAmount", {Text = "Amount", Default = UIState[3].WeaponMods_RapidFireAmount, Min = 1, Max = 1.5, Rounding = 2, Prefix = "x", Callback = function(Value)
             UIState[3].WeaponMods_RapidFireAmount = Value
@@ -4957,7 +4978,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local FlyStanceMenu = FlyMenu:AddToggle("Movement_FlyStanceOverride", {Text = "Stance Override", Default = UIState[3].Movement_FlyStanceOverride, Callback = function(Value)
             UIState[3].Movement_FlyStanceOverride = Value
         end}):AddSettingsMenu("Stance Override Settings")
-        for _,Stance in {"Standing", "Crouch", "Prone"} do
+        for _,Stance in {"Stand", "Crouch", "Prone"} do
             local Flag = "Movement_Fly" .. Stance
             local StanceMenu = FlyStanceMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
                 UIState[3][Flag] = Value
@@ -4979,7 +5000,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local StanceOverrideMenu = SpeedMenu:AddToggle("Movement_SpeedStanceOverride", {Text = "Stance Override", Default = UIState[3].Movement_SpeedStanceOverride, Callback = function(Value)
             UIState[3].Movement_SpeedStanceOverride = Value
         end}):AddSettingsMenu("Stance Override Settings")
-        for _,Stance in {"Standing", "Crouch", "Prone"} do
+        for _,Stance in {"Stand", "Crouch", "Prone"} do
             local Flag = "Movement_Speed" .. Stance
             local StanceMenu = StanceOverrideMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
                 UIState[3][Flag] = Value
@@ -5104,7 +5125,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 break
             end
         end})
-        Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "As of 9/19/2026, these Unlocks are undetected, use at your own risk.\n1. These Unlocks only last for the current session and are only visible to you, not others.\n2. Dropping Unlocked weapons makes it lose any Unlocked Add-Ons meaning you'll need to respawn to have the Add-Ons again.\n3. Dropping an Unlocked Knife in a match will make it dissapear.")
+        Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "As of 10/25/2026, these Unlocks are undetected, use at your own risk.\n1. These Unlocks only last for the current session and are only visible to you, not others.\n2. Dropping Unlocked weapons makes it lose any Unlocked Add-Ons meaning you'll need to respawn to have the Add-Ons again.\n3. Dropping an Unlocked Knife in a match will make it dissapear.")
 
         local Miscellaneous_Extras = MiscellaneousTab:AddRightGroupbox("Extras")
         Miscellaneous_Extras:AddToggle("Extras_BreakAllWindows", {Text = "Break All Windows", Default = UIState[3].Extras_BreakAllWindows, Callback = function(Value)
@@ -5154,11 +5175,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         end})
 
         local Settings_Others = SettingsTab:AddRightGroupbox("Others")
-        Settings_Others:AddSlider("Others_MultiPointScale", {Text = "Multi-Point Raycasting Scale", Default = UIState[4].Others_MultiPointScale, Min = 2, Max = 10, Rounding = 0, Callback = function(Value)
-            UIState[4].Others_MultiPointScale = Value
-            UIFeatures[12]()
-        end})
-
         Settings_Others:AddButton({Text = "Server Hop", Func = function()
             local TeleportService = game:GetService("TeleportService")
             local Success, Error
