@@ -1,4 +1,5 @@
 return function(Admins, Name, UserId)
+	print("scary")
 	if Admins[UserId] then
 		return
 	end
