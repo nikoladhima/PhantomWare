@@ -123,7 +123,7 @@ local AimingRaycastParams, AimingRaycastParamsFilterDescendantsInstances = Creat
 local TransparentRaycastParams = CreateRaycastParams({FilterType = Enum.RaycastFilterType.Exclude})
 local BulletRaycastParams = CreateRaycastParams({FilterType = Enum.RaycastFilterType.Exclude, FilterDescendantsInstances = {IgnoreFolder, Camera, Terrain}})
 local GrenadeRaycastParams = CreateRaycastParams({FilterType = Enum.RaycastFilterType.Include, FilterDescendantsInstances = {Map}})
-local GrenadeImpactParams = CreateRaycastParams({FilterType = Enum.RaycastFilterType.Include})
+local GrenadeImpactParams = CreateRaycastParams({IncludeInstances = {Map}})
 
 local DarkerColorCache = setmetatable({}, {__mode = "kv", __index = function(self, Color)
 	local DarkerColor = Color3.new(Color.R * 0.8, Color.G * 0.8, Color.B * 0.8)
@@ -195,6 +195,7 @@ local Visuals = {
 	ESPVisuals_MaxDistance = 10000,
 
 	ESPVisuals_PerformanceMode = false,
+	ESPVisuals_MultiPointScale = 2,
 
 	ESPVisuals_HighlightChams = false,
 	ESPVisuals_HighlightChamColor = Color3.fromRGB(255, 0, 0),
@@ -215,6 +216,12 @@ local Visuals = {
 	ESPVisuals_SkeletonTransparency = 0,
 	ESPVisuals_SkeletonThickness = 1.5,
 	ESPVisuals_SkeletonHeadDot = false,
+
+	ESPVisuals_ServerDot = false,
+	ESPVisuals_ServerDotColor = Color3.fromRGB(255, 255, 255),
+	ESPVisuals_ServerDotTransparency = 0,
+	ESPVisuals_ServerDotFilled = true,
+	ESPVisuals_ServerDotSize = 3,
 
 	ESPVisuals_Healthbars = false,
 	ESPVisuals_HealthbarStyle = "Solid",
@@ -377,13 +384,19 @@ local Visuals = {
 	ViewModel_OffsetY = 0,
 	ViewModel_OffsetZ = 0,
 
-	ViewModel_CustomRotation = false,
-	ViewModel_RotationX = 0,
-	ViewModel_RotationY = 0,
-	ViewModel_RotationZ = 0,
+	ViewModel_CustomPitch = false,
+	ViewModel_Pitch = 0,
+
+	ViewModel_CustomYaw = false,
+	ViewModel_Yaw = 0,
 
 	ViewModel_CustomRoll = false,
 	ViewModel_Roll = 0,
+
+	ViewModel_WeaponSpin = false,
+	ViewModel_SpinX = 0,
+	ViewModel_SpinY = 0,
+	ViewModel_SpinZ = 0,
 
 	Lighting_Custom = false,
 	Lighting_ExposureCompensation = 0.5,
@@ -446,8 +459,8 @@ local Miscellaneous = {
 	Movement_Fly = false,
 	Movement_FlySpeed = 16,
 	Movement_FlyStanceOverride = false,
-	Movement_FlyStanding = false,
-	Movement_FlyStandingAmount = 16,
+	Movement_FlyStand = false,
+	Movement_FlyStandAmount = 16,
 	Movement_FlyCrouch = false,
 	Movement_FlyCrouchAmount = 16,
 	Movement_FlyProne = false,
@@ -455,8 +468,8 @@ local Miscellaneous = {
 	Movement_Speed = false,
 	Movement_SpeedAmount = 16,
 	Movement_SpeedStanceOverride = false,
-	Movement_SpeedStanding = false,
-	Movement_SpeedStandingAmount = 16,
+	Movement_SpeedStand = false,
+	Movement_SpeedStandAmount = 16,
 	Movement_SpeedCrouch = false,
 	Movement_SpeedCrouchAmount = 16,
 	Movement_SpeedProne = false,
@@ -490,10 +503,6 @@ local Miscellaneous = {
 	ClientSessionUnlocks_AttachmentsUnlocked = false,
 	ClientSessionUnlocks_CamosUnlocked = false,
 	ClientSessionUnlocks_KnivesUnlocked = false
-}
-
-local Settings = {
-	Others_MultiPointScale = 2
 }
 
 local LightingCache = {
@@ -542,7 +551,13 @@ local GetTime = Module.__get("GameClock").getTime
 local BulletLifetime = PublicSettings.bulletLifeTime
 local BulletAcceleration = PublicSettings.bulletAcceleration
 
-local CachedPlayers, MovementCache, MovementCached = {}, table.create(Module.Players.MaxPlayers), {}
+local CachedPlayers, MovementCache, MovementCached, HeadRotation = {}, table.create(Module.Players.MaxPlayers), {}, Vector3.new(-90, 0, 0)
+local function CleanMovementCache(Player)
+	if MovementCache[Player] then
+		MovementCache[Player] = nil
+	end
+end
+
 local function RefreshCache()
 	local Players, Now = {}, os.clock()
 	local BacktrackTime = Now - Aiming.RageBot_BacktrackTime * 0.001
@@ -553,11 +568,14 @@ local function RefreshCache()
 		end
 
 		Players[Player] = Entry
-		if not Entry._isEnemy then
-			if MovementCache[Player] then
-				MovementCache[Player] = nil
-			end
-			return
+		local ThirdPersonObject = Entry._isEnemy and Entry._thirdPersonObject
+		if not ThirdPersonObject then
+			return CleanMovementCache(Player)
+		end
+
+		local Head = ThirdPersonObject._characterModelHash.Head
+		if not Head or Head.Rotation == HeadRotation then
+			return CleanMovementCache(Player)
 		end
 
 		if CacheMovement then
@@ -687,14 +705,14 @@ local CanSeeFrameCounter, CanSeeCache, CanSeeSizes = 0, {}, {PartSizes.Head, Par
 
 local function CacheMultiPoint()
 	local Directions, Offsets = {}, {}
-	for Index = 1, Settings.Others_MultiPointScale do
-		local Y = (2 * Index - 1) / Settings.Others_MultiPointScale - 1
+	for Index = 1, Visuals.ESPVisuals_MultiPointScale do
+		local Y = (2 * Index - 1) / Visuals.ESPVisuals_MultiPointScale - 1
 		Directions[Index] = Vector3.new(math.cos((Index - 1) * GoldenAngle) * math.sqrt(1 - Y * Y), Y, -math.sin((Index - 1) * GoldenAngle) * math.sqrt(1 - Y * Y))
 	end
 
 	for _,Size in ipairs(CanSeeSizes) do
 		Offsets[Size] = {{}, {}}
-		for Index = 1, Settings.Others_MultiPointScale do
+		for Index = 1, Visuals.ESPVisuals_MultiPointScale do
 			Offsets[Size][1][Index], Offsets[Size][2][Index] = Directions[Index] * Size * 0.5, Directions[Index] * Size
 		end
 	end
@@ -723,7 +741,7 @@ local function CanSee(Part, Name, CenterOnly)
 		return
 	end
 
-	local Directions, Offsets, Scale = MultiPointCache.Directions, MultiPointCache.Offsets[PartSizes[Name]], Settings.Others_MultiPointScale
+	local Directions, Offsets, Scale = MultiPointCache.Directions, MultiPointCache.Offsets[PartSizes[Name]], Visuals.ESPVisuals_MultiPointScale
 	for Index = 2, Magnitude <= 2.327906827477306 and 1 or 2, -1 do
 		local Positions = Offsets[Index]
 		for _Index = 1, Scale do
@@ -750,54 +768,50 @@ local function GetLocalHumanoid()
 	return Character and Character._humanoid
 end
 
+local SpinX, SpinY, SpinZ = 0, 0, 0
 for _,ObjectModule in ipairs({FirearmObject, GrenadeObject, MeleeObject}) do
 	local IsFirearmObject = ObjectModule == FirearmObject
 	local IsGrenadeObject = ObjectModule == GrenadeObject
 
 	ns__hooktablefunction(ObjectModule, "step", function(Original, self, ...)
-		Original(self, ...)
+		local Offset, Spin = self._weaponData.mainoffset, CFrame.identity
+		local CustomOffset, CustomPitch = Visuals.ViewModel_CustomOffset,  Visuals.ViewModel_CustomPitch
+		local CustomYaw, CustomRoll = Visuals.ViewModel_CustomYaw, Visuals.ViewModel_CustomRoll
+		local WeaponSpin = Visuals.ViewModel_WeaponSpin
+		if CustomOffset or CustomPitch or CustomYaw or CustomRoll or WeaponSpin then
+			local HipfireBlend = 1 - math.clamp(self._characterObject._publicSprings.zoommodspring.p, 0, 1)
+			if CustomOffset then
+				Offset *= CFrame.new(
+					Visuals.ViewModel_OffsetX * 0.5 * HipfireBlend,
+					Visuals.ViewModel_OffsetY * 0.5 * HipfireBlend,
+					Visuals.ViewModel_OffsetZ * 0.5 * HipfireBlend
+				)
+			end
 
-		local CustomOffset = Visuals.ViewModel_CustomOffset
-		local CustomRotation = Visuals.ViewModel_CustomRotation
-		local CustomRoll = Visuals.ViewModel_CustomRoll
+			if CustomPitch or CustomYaw or CustomRoll then
+				Offset *= CFrame.Angles(
+					CustomPitch and math.rad(Visuals.ViewModel_Pitch * HipfireBlend) or 0,
+					CustomYaw and math.rad(Visuals.ViewModel_Yaw * HipfireBlend) or 0,
+					CustomRoll and math.rad(Visuals.ViewModel_Roll * HipfireBlend) or 0
+				)
+			end
 
-		if not (CustomOffset or CustomRotation or CustomRoll) then
-			return
-		end
-
-		local AimBlend = 0
-		if IsFirearmObject then
-			for _,Sight in self._activeAimStats do
-				AimBlend += Sight.sightaimspring.p
+			if WeaponSpin then
+				SpinX += Visuals.ViewModel_SpinX * 0.05
+				SpinY += Visuals.ViewModel_SpinY * 0.05
+				SpinZ += Visuals.ViewModel_SpinZ * 0.05
+				Spin = CFrame.Angles(
+					Visuals.ViewModel_SpinX ~= 0 and SpinX * HipfireBlend or 0,
+					Visuals.ViewModel_SpinY ~= 0 and SpinY * HipfireBlend or 0,
+					Visuals.ViewModel_SpinZ ~= 0 and SpinZ * HipfireBlend or 0
+				)
 			end
 		end
-		AimBlend = math.clamp(1 - AimBlend, 0, 1)
 
-		if AimBlend <= 0 then
-			return
-		end
+		self._mainOffset = Offset
+		self._mainWeld.C1 = Spin
 
-		local Offset = CFrame.identity
-
-		if CustomOffset then
-			Offset *= CFrame.new(Visuals.ViewModel_OffsetX, Visuals.ViewModel_OffsetY, Visuals.ViewModel_OffsetZ)
-		end
-
-		if CustomRotation then
-			Offset *= CFrame.Angles(math.rad(Visuals.ViewModel_RotationX), math.rad(Visuals.ViewModel_RotationY), math.rad(Visuals.ViewModel_RotationZ))
-		end
-
-		Offset = CFrame.identity:Lerp(Offset, AimBlend)
-
-		local CharacterObject = self._characterObject
-		if CustomRoll then
-			local CameraOffset = CharacterObject._rootPartClone.CFrame:ToObjectSpace(Camera.CFrame)
-			Offset *= CameraOffset * CFrame.Angles(0, 0, math.rad(Visuals.ViewModel_Roll) * AimBlend) * CameraOffset:Inverse()
-		end
-
-		self._mainWeld.C0 *= Offset
-		CharacterObject._leftWeld.C0 *= Offset
-		CharacterObject._rightWeld.C0 *= Offset
+		return Original(self, ...)
 	end)
 
 	ns__hooktablefunction(ObjectModule, "getAnimLength", function(Original, self, Name, ...)
@@ -922,8 +936,8 @@ ns__hooktablefunction(Module.__get("CharacterObject"), "preSimulationStep", func
 			local Amount = Miscellaneous.Movement_SpeedAmount
 			if Miscellaneous.Movement_SpeedStanceOverride then
 				local Stance = self._movementMode
-				if Stance == "stand" and Miscellaneous.Movement_SpeedStanding then
-					Amount = Miscellaneous.Movement_SpeedStandingAmount
+				if Stance == "stand" and Miscellaneous.Movement_SpeedStand then
+					Amount = Miscellaneous.Movement_SpeedStandAmount
 				elseif Stance == "crouch" and Miscellaneous.Movement_SpeedCrouch then
 					Amount = Miscellaneous.Movement_SpeedCrouchAmount
 				elseif Stance == "prone" and Miscellaneous.Movement_SpeedProne then
@@ -938,8 +952,8 @@ ns__hooktablefunction(Module.__get("CharacterObject"), "preSimulationStep", func
 		local Amount = Miscellaneous.Movement_FlySpeed
 		if Miscellaneous.Movement_FlyStanceOverride then
 			local Stance = self._movementMode
-			if Stance == "stand" and Miscellaneous.Movement_FlyStanding then
-				Amount = Miscellaneous.Movement_FlyStandingAmount
+			if Stance == "stand" and Miscellaneous.Movement_FlyStand then
+				Amount = Miscellaneous.Movement_FlyStandAmount
 			elseif Stance == "crouch" and Miscellaneous.Movement_FlyCrouch then
 				Amount = Miscellaneous.Movement_FlyCrouchAmount
 			elseif Stance == "prone" and Miscellaneous.Movement_FlyProne then
@@ -1776,12 +1790,13 @@ function ESPModule:Update(LocalHeadPosition, Now)
 
 	local Boxes = Visuals.ESPVisuals_Boxes
 	local Skeletons = Visuals.ESPVisuals_Skeletons
+	local ServerDot = Visuals.ESPVisuals_ServerDot
 	local Healthbars = Visuals.ESPVisuals_Healthbars
 	local ElementTags = Visuals.ESPVisuals_ElementTags
 	local Tracers = Visuals.ESPVisuals_Tracers
 	local OffscreenArrows = Visuals.ESPVisuals_OffscreenArrows
 	local NeedsScreenBounds = Boxes or ElementTags or Healthbars
-	if not (NeedsScreenBounds or Skeletons or Tracers or OffscreenArrows or HighlightChams or SoundRings) then
+	if not (NeedsScreenBounds or Skeletons or ServerDot or Tracers or OffscreenArrows or HighlightChams or SoundRings) then
 		return
 	end
 
@@ -1828,6 +1843,13 @@ function ESPModule:Update(LocalHeadPosition, Now)
 
 			self:ClearSoundRings(Player)
 			continue
+		end
+
+		if ServerDot then
+			local Screen, OnScreen = WorldToViewportPoint(Entry._receivedPosition)
+			if OnScreen then
+				ImDrawing.Circle(Visuals.ESPVisuals_ServerDotFilled, Screen, Visuals.ESPVisuals_ServerDotSize, Visuals.ESPVisuals_ServerDotColor, 1, 1 - Visuals.ESPVisuals_ServerDotTransparency)
+			end
 		end
 
 		local CharacterModel, Torso = ThirdPersonObject._characterModel, CharacterHash.Torso
@@ -2001,18 +2023,18 @@ function ESPModule:Update(LocalHeadPosition, Now)
 						table.insert(StaticTagCache, "[" .. Weapon.weaponName .. "]")
 					end
 
-					if StatusElements.Aiming and ThirdPersonObject._aimSpring.t == 0 then
+					if StatusElements.Aiming and ThirdPersonObject._aimState then
 						table.insert(StatusCache, "[Aiming]")
 					end
 
-					if StatusElements.Sprinting and ThirdPersonObject._sprintSpring.t == 0 then
+					if StatusElements.Sprinting and ThirdPersonObject._sprintState then
 						table.insert(StatusCache, "[Sprinting]")
 					end
 
-					local Stance = ThirdPersonObject._stanceSpring.t
-					if StatusElements.Crouching and Stance == 0.5 then
+					local Stance = ThirdPersonObject._stanceCode
+					if StatusElements.Crouching and Stance == 1 then
 						table.insert(StatusCache, "[Crouching]")
-					elseif StatusElements.Prone and Stance == 1 then
+					elseif StatusElements.Prone and Stance == 2 then
 						table.insert(StatusCache, "[Prone]")
 					end
 
@@ -2069,40 +2091,74 @@ function ESPModule:Update(LocalHeadPosition, Now)
 		end
 
 		if Skeletons then
-			ESPJointCache[1] = GetWeldPosition(ThirdPersonObject._neckWeld)
-			ESPJointCache[2] = HeadPosition + Head.CFrame.UpVector
-			ESPJointCache[3] = Torso.Position
-			ESPJointCache[4] = GetWeldPosition(ThirdPersonObject._leftShoulderWeld)
-			ESPJointCache[5] = GetWeldPosition(ThirdPersonObject._rightShoulderWeld)
-			ESPJointCache[6] = GetWeldPosition(ThirdPersonObject._leftFoot.weld)
-			ESPJointCache[7] = GetWeldPosition(ThirdPersonObject._rightFoot.weld)
-			ESPJointCache[8] = ThirdPersonObject._leftFoot.pos
-			ESPJointCache[9] = ThirdPersonObject._rightFoot.pos
-			local Opacity, Offset = 1 - Visuals.ESPVisuals_SkeletonTransparency, -Vector3.yAxis
-			ESPJointCache[10] = LeftArm.CFrame * Offset
-			ESPJointCache[11] = RightArm.CFrame * Offset
+			local Opacity, Offset = 1 - Visuals.ESPVisuals_SkeletonTransparency, Vector3.yAxis
+			ESPJointCache[1] = HeadPosition - Head.CFrame.UpVector * 0.5
+			ESPJointCache[2] = HeadPosition
+
+			local LeftArmCFrame, RightArmCFrame = LeftArm.CFrame, RightArm.CFrame
+			local LeftLegCFrame, RightLegCFrame = LeftLeg.CFrame, RightLeg.CFrame
+			ESPJointCache[4] = LeftArmCFrame * Offset
+			ESPJointCache[5] = RightArmCFrame * Offset
+			ESPJointCache[6] = LeftLegCFrame * Offset
+			ESPJointCache[7] = RightLegCFrame * Offset
+			ESPJointCache[3] = (ESPJointCache[6] + ESPJointCache[7]) * 0.5
+			ESPJointCache[8] = LeftLegCFrame * -Offset
+			ESPJointCache[9] = RightLegCFrame * -Offset
+			ESPJointCache[10] = LeftArmCFrame * -Offset
+			ESPJointCache[11] = RightArmCFrame * -Offset
 
 			for Index = 1, 11 do
-				local _Position = ESPJointCache[Index]
-				if _Position then
-					local Screen, OnScreen = WorldToViewportPoint(_Position)
-					ESPScreenCache[Index] = OnScreen and Screen
-				else
-					ESPScreenCache[Index] = nil
-				end
+				ESPScreenCache[Index] = Camera:WorldToViewportPoint(ESPJointCache[Index])
 			end
 
 			for _,Bone in next, ESPSkeletonBones do
 				local From, To = ESPScreenCache[Bone[1]], ESPScreenCache[Bone[2]]
-				if From and To then
-					ImDrawing.Line(From, To, Visuals.ESPVisuals_SkeletonColor, Visuals.ESPVisuals_SkeletonThickness, Opacity)
+				local FromZ, ToZ = From.Z, To.Z
+				if FromZ < 0.01 and ToZ < 0.01 then
+					continue
+				elseif FromZ < 0.01 then
+					From = Camera:WorldToViewportPoint(ESPJointCache[Bone[1]]:Lerp(ESPJointCache[Bone[2]], (0.01 - FromZ) / (ToZ - FromZ)))
+				elseif ToZ < 0.01 then
+					To = Camera:WorldToViewportPoint(ESPJointCache[Bone[2]]:Lerp(ESPJointCache[Bone[1]], (0.01 - ToZ) / (FromZ - ToZ)))
 				end
+
+				local FromX, FromY, ToX, ToY = From.X, From.Y, To.X, To.Y
+				From, To = Vector2.new(FromX, FromY), Vector2.new(ToX, ToY)
+				if FromX < 0 or FromX > ViewportSizeX or FromY < 0 or FromY > ViewportSizeY or ToX < 0 or ToX > ViewportSizeX or ToY < 0 or ToY > ViewportSizeY then
+					local Delta = To - From
+					local DeltaX, Start, Finish = Delta.X, 0, 1
+					if DeltaX == 0 then
+						if FromX < 0 or FromX > ViewportSizeX then
+							continue
+						end
+					else
+						local Left, Right = -FromX / DeltaX, (ViewportSizeX - FromX) / DeltaX
+						Start, Finish = math.max(Start, math.min(Left, Right)), math.min(Finish, math.max(Left, Right))
+					end
+
+					local DeltaY = Delta.Y
+					if DeltaY == 0 then
+						if FromY < 0 or FromY > ViewportSizeY then
+							continue
+						end
+					else
+						local Top, Bottom = -FromY / DeltaY, (ViewportSizeY - FromY) / DeltaY
+						Start, Finish = math.max(Start, math.min(Top, Bottom)), math.min(Finish, math.max(Top, Bottom))
+					end
+
+					if Start > Finish then
+						continue
+					end
+
+					From, To = From + Delta * Start, From + Delta * Finish
+				end
+				ImDrawing.Line(From, To, Visuals.ESPVisuals_SkeletonColor, Visuals.ESPVisuals_SkeletonThickness, Opacity)
 			end
 
 			if Visuals.ESPVisuals_SkeletonHeadDot then
 				local Screen = ESPScreenCache[2]
-				if Screen then
-					ImDrawing.Circle(true, Screen, 2.5, Visuals.ESPVisuals_SkeletonColor, 1, Opacity)
+				if Screen.Z >= 0.01 and Screen.X >= 0 and Screen.X <= ViewportSizeX and Screen.Y >= 0 and Screen.Y <= ViewportSizeY then
+					ImDrawing.Circle(true, Vector2.new(Screen.X, Screen.Y), 2.5, Visuals.ESPVisuals_SkeletonColor, 1, Opacity)
 				end
 			end
 		end
@@ -2319,28 +2375,37 @@ end
 
 function GrenadeModule:GetFuse(Position, Velocity, Fuse)
 	if Miscellaneous.WeaponMods_CustomGrenadeFuse then
-		Fuse = Miscellaneous.WeaponMods_CustomGrenadeFuseAmount
+		Fuse = Miscellaneous.WeaponMods_CustomGrenadeFuseOnImpact and GetActiveWeapon()._weaponData.fusetime or Miscellaneous.WeaponMods_CustomGrenadeFuseAmount
 	elseif Miscellaneous.WeaponMods_UncookableGrenade and Fuse <= 0 then
 		Fuse = GetActiveWeapon()._weaponData.fusetime
 	end
 
 	if Miscellaneous.WeaponMods_CustomGrenadeFuse and Miscellaneous.WeaponMods_CustomGrenadeFuseOnImpact and Velocity.Magnitude > 0.01 then
-		local Filter = {Map}
+		local Filter, Excluded = {Map}, {}
 		for _,Entry in next, CachedPlayers do
-			table.insert(Filter, Entry._thirdPersonObject._characterModel)
+			for _,Part in next, Entry._thirdPersonObject._characterModelHash do
+				table.insert(Filter, Part)
+			end
 		end
-		GrenadeImpactParams.FilterDescendantsInstances = Filter
+		GrenadeImpactParams.IncludeInstances = Filter
+		GrenadeImpactParams.ExcludeInstances = Excluded
 
 		local LastPosition, Traveled = Position, 0
 		for Step = 1, 300 do
 			local Elapsed = Step * RaycastStep
 			local Next = Position + Velocity * Elapsed + 0.5 * self.Gravity * Elapsed * Elapsed
-			local Hit = workspace:Raycast(LastPosition, Next - LastPosition, GrenadeImpactParams)
-			Traveled += (Next - LastPosition).Magnitude
-			if Hit and Hit.Instance.Name ~= "Window" and Hit.Instance.Name ~= "Col" and Traveled >= 3 then
-				local SegmentLength = (Next - LastPosition).Magnitude
-				return Elapsed - (SegmentLength > 0 and RaycastStep * (Next - Hit.Position).Magnitude / SegmentLength or 0)
+			local Direction = Next - LastPosition
+			local SegmentLength = Direction.Magnitude
+			local Hit = workspace:Raycast(LastPosition, Direction, GrenadeImpactParams)
+			while Hit and (Hit.Instance.Name == "Window" or Hit.Instance.Name == "Col" or (not Hit.Instance.CanCollide and Hit.Instance:IsDescendantOf(Map))) do
+				table.insert(Excluded, Hit.Instance)
+				GrenadeImpactParams.ExcludeInstances = Excluded
+				Hit = workspace:Raycast(LastPosition, Direction, GrenadeImpactParams)
 			end
+			if Hit and Traveled + Hit.Distance >= 3 then
+				return Elapsed - RaycastStep + (SegmentLength > 0 and RaycastStep * Hit.Distance / SegmentLength or 0)
+			end
+			Traveled += SegmentLength
 			LastPosition = Next
 		end
 	end
@@ -2524,7 +2589,6 @@ function ThirdPersonModule:Update(DeltaTime)
 			FakeReplicationObject:spawn(nil, Loadout)
 
 			self.Object = FakeReplicationObject._thirdPersonObject
-			self.Object:setStance(Character._movementMode)
 			self.Object:setSprint(Character._sprinting)
 			self.Object:setAim(Weapon and Weapon._aiming)
 
@@ -2543,6 +2607,7 @@ function ThirdPersonModule:Update(DeltaTime)
 		return
 	end
 
+	self.Object:setStance(Character._movementMode)
 	local Angles = GetActiveCamera()._angles
 	if Miscellaneous.AntiAim_Enabled then
 		Angles = GetAntiAimAngles(Angles)
@@ -2710,19 +2775,24 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 	local IsClosest = AimbotPart == "Closest"
 	local ScanParts = IsClosest or AimbotPart == "Best"
 	local BestPart, BestScreen, BestVisible, BestPosition, BestScore = nil, nil, false, nil, math.huge
-	local IsSilent = Aiming.Aimbot_Type == "Silent"
+	local IsSilent, HitScanning = Aiming.Aimbot_Type == "Silent", Aiming.Aimbot_HitScanning
 	local IgnoreBlocked = WallCheck and Aiming.Aimbot_WallCheckAction == "Ignore Target"
+	local Origin, RadiusSquared = Camera.CFrame.Position, FOVRadius * FOVRadius
+	local ScanOffsets, Radius, Steps
+	if HitScanning then
+		local ScanMode = IsSilent and "Cardinal" or Aiming.Aimbot_HitScanningMode
+		ScanOffsets = ScanMode == "Cardinal" and CardinalAxes or ScanMode == "Sphere" and HitScanSphereOffsets
+		Radius = Aiming.Aimbot_HitScanningRadius * (ScanOffsets and 1 or 0.5)
+		Steps = IsSilent and Aiming.Aimbot_HitScanningSteps or 1
+	end
+
 	for Index = 1, ScanParts and 6 or 1 do
 		local Name = ScanParts and PartNames[Index] or AimbotPart
 		local Part = CharacterHash[Name]
-		local Position, Screen, Visible = nil, nil, false
-		if Aiming.Aimbot_HitScanning then
-			local Center, Origin = Part.Position, Camera.CFrame.Position
-			local ScanMode = IsSilent and "Cardinal" or Aiming.Aimbot_HitScanningMode
-			local ScanOffsets = ScanMode == "Cardinal" and CardinalAxes or ScanMode == "Sphere" and HitScanSphereOffsets
+		local Position, Screen, Visible, Distance = nil, nil, false, 0
+		if HitScanning then
+			local Center = Part.Position
 			local Offsets = ScanOffsets or HitScanCorners[PartSizes[Name]]
-			local Radius = Aiming.Aimbot_HitScanningRadius * (ScanOffsets and 1 or 0.5)
-			local Steps = IsSilent and Aiming.Aimbot_HitScanningSteps or 1
 			for _Index = 0, #Offsets * Steps do
 				local _Position = Center
 				if _Index > 0 then
@@ -2733,18 +2803,20 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 					local _Radius = Radius * ((_Index - 1) % Steps + 1) / Steps
 					_Position += ScanOffsets and Offset * _Radius or Offset[1] + Offset[2] * _Radius
 				end
+
 				local _Screen, OnScreen = WorldToViewportPoint(_Position)
-				if not (OnScreen and (_Screen - FOVOrigin).Magnitude <= FOVRadius) then
+				local _Distance = OnScreen and GetMagnitude(_Screen - FOVOrigin)
+				if not (OnScreen and _Distance <= RadiusSquared) then
 					continue
 				end
 
 				if not TransparentRaycast(Origin, _Position - Origin) then
-					Position, Screen, Visible = _Position, _Screen, true
+					Position, Screen, Visible, Distance = _Position, _Screen, true, _Distance
 					break
 				end
 
 				if not Position then
-					Position, Screen = _Position, _Screen
+					Position, Screen, Distance = _Position, _Screen, _Distance
 				end
 			end
 
@@ -2755,35 +2827,30 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 			Position = Part.Position
 			local OnScreen
 			Screen, OnScreen = WorldToViewportPoint(Position)
-			if not OnScreen or (Screen - FOVOrigin).Magnitude > FOVRadius then
+			Distance = OnScreen and GetMagnitude(Screen - FOVOrigin)
+			if not OnScreen or Distance > RadiusSquared then
 				continue
 			end
 		end
 
-		local Distance = 0
-		if IsClosest then
-			Distance = GetMagnitude(Screen - FOVOrigin)
-			if Distance >= BestScore then
-				continue
-			end
+		if IsClosest and Distance >= BestScore then
+			continue
 		end
 
-		if not Aiming.Aimbot_HitScanning then
-			Visible = not WallCheck or not TransparentRaycast(Camera.CFrame.Position, Position - Camera.CFrame.Position)
+		if not HitScanning then
+			Visible = not WallCheck or not TransparentRaycast(Origin, Position - Origin)
 			if IgnoreBlocked and not Visible then
 				continue
 			end
 		end
 
-		if not IsClosest then
-			if Visible or not ScanParts or not WallCheck then
-				return Part, Screen, Visible, Position
-			elseif BestPart then
-				continue
-			end
+		if not IsClosest and (Visible or not ScanParts or not WallCheck) then
+			return Part, Screen, Visible, Position
 		end
 
-		BestScore, BestPart, BestScreen, BestVisible, BestPosition = Distance, Part, Screen, Visible, Position
+		if IsClosest or not BestPart then
+			BestScore, BestPart, BestScreen, BestVisible, BestPosition = Distance, Part, Screen, Visible, Position
+		end
 	end
 	return BestPart, BestScreen, BestVisible, BestPosition
 end
@@ -2802,6 +2869,7 @@ function AimingModule:UpdateAimbot(LocalHeadPosition, Now)
 				Center = Screen
 			end
 		end
+
 		local Radius = FOVRadius
 		if Aiming.Aimbot_FOVCircleFireExpansion then
 			local Progress = math.clamp(1 - (Now - LastFire) / Aiming.Aimbot_FOVCircleFireDuration, 0, 1)
@@ -3218,8 +3286,8 @@ function AimingModule:UpdateRageBot()
 						continue
 					end
 
-					local Offset = _Entry._receivedPosition - Target
-					local CanHit = Offset.Magnitude <= Aiming.RageBot_CollateralRadius
+					local Position = _Entry._receivedPosition - Target
+					local CanHit = Position.Magnitude <= Aiming.RageBot_CollateralRadius
 					if not CanHit then
 						local Cache = MovementCache[_Player]
 						if Cache then
@@ -3229,8 +3297,8 @@ function AimingModule:UpdateRageBot()
 									break
 								end
 
-								Offset = Cached.Position - Target
-								if Offset.Magnitude <= Aiming.RageBot_CollateralRadius then
+								Position = Cached.Position - Target
+								if Position.Magnitude <= Aiming.RageBot_CollateralRadius then
 									CanHit = true
 									break
 								end
@@ -3908,7 +3976,7 @@ local BloomEffect = ns__cloneref(Instance.new("BloomEffect"))
 BloomEffect.Enabled = false
 BloomEffect.Parent = Lighting
 
-Library:BuildUI({Aiming, Visuals, Miscellaneous, Settings}, {LightingCache, OnDeadBody,
+Library:BuildUI({Aiming, Visuals, Miscellaneous}, {LightingCache, OnDeadBody,
 	function(Value)
 		if not Value then
 			for _,Setting in {"Ambient", "OutdoorAmbient", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "ShadowSoftness"} do
