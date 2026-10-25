@@ -217,7 +217,7 @@ local Visuals = {
 	ESPVisuals_SkeletonThickness = 1.5,
 	ESPVisuals_SkeletonHeadDot = false,
 
-	ESPVisuals_ServerDot = false,
+	ESPVisuals_ServerDots = false,
 	ESPVisuals_ServerDotColor = Color3.fromRGB(255, 255, 255),
 	ESPVisuals_ServerDotTransparency = 0,
 	ESPVisuals_ServerDotFilled = true,
@@ -467,6 +467,7 @@ local Miscellaneous = {
 	Movement_FlyProneAmount = 16,
 	Movement_Speed = false,
 	Movement_SpeedAmount = 16,
+	Movement_SpeedIgnoreADS = true,
 	Movement_SpeedStanceOverride = false,
 	Movement_SpeedStand = false,
 	Movement_SpeedStandAmount = 16,
@@ -928,7 +929,8 @@ end)
 ns__hooktablefunction(Module.__get("CharacterObject"), "preSimulationStep", function(Original, self, DeltaTime)
 	Original(self, DeltaTime)
 
-	if Miscellaneous.Movement_Speed then
+	local ActiveWeapon = Miscellaneous.Movement_Speed and not Miscellaneous.Movement_SpeedIgnoreADS and GetActiveWeapon()
+	if Miscellaneous.Movement_Speed and not (ActiveWeapon and ActiveWeapon._aiming) then
 		local RootPart = self._rootPart
 		local Horizontal = Vector3.new(RootPart.Velocity.X, 0, RootPart.Velocity.Z)
 		local Speed = Horizontal.Magnitude
@@ -1790,7 +1792,7 @@ function ESPModule:Update(LocalHeadPosition, Now)
 
 	local Boxes = Visuals.ESPVisuals_Boxes
 	local Skeletons = Visuals.ESPVisuals_Skeletons
-	local ServerDot = Visuals.ESPVisuals_ServerDot
+	local ServerDot = Visuals.ESPVisuals_ServerDots
 	local Healthbars = Visuals.ESPVisuals_Healthbars
 	local ElementTags = Visuals.ESPVisuals_ElementTags
 	local Tracers = Visuals.ESPVisuals_Tracers
