@@ -4421,8 +4421,8 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].ESPVisuals_SkeletonHeadDot = Value
         end})
 
-        local ServerDotMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_ServerDot", {Text = "Server Dot", Default = UIState[2].ESPVisuals_ServerDot, Callback = function(Value)
-            UIState[2].ESPVisuals_ServerDot = Value
+        local ServerDotMenu = ESPVisualsDependencies:AddToggle("ESPVisuals_ServerDots", {Text = "Server Dots", Default = UIState[2].ESPVisuals_ServerDots, Callback = function(Value)
+            UIState[2].ESPVisuals_ServerDots = Value
         end}):AddSettingsMenu("Server Dot Settings")
         ServerDotMenu:AddColorPicker("ESPVisuals_ServerDotColor", {Default = UIState[2].ESPVisuals_ServerDotColor, Transparency = UIState[2].ESPVisuals_ServerDotTransparency, Callback = function(Value, Transparency)
             UIState[2].ESPVisuals_ServerDotColor = Value
@@ -4980,10 +4980,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         end}):AddSettingsMenu("Stance Override Settings")
         for _,Stance in {"Stand", "Crouch", "Prone"} do
             local Flag = "Movement_Fly" .. Stance
-            local StanceMenu = FlyStanceMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
+            FlyStanceMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
                 UIState[3][Flag] = Value
-            end}):AddSettingsMenu(Stance .. " Fly Settings")
-            StanceMenu:AddSlider(Flag .. "Amount", {Text = "Amount", Default = UIState[3][Flag .. "Amount"], Min = 0, Max = 50, Rounding = 0, Callback = function(Value)
+            end}):AddSettingsMenu(Stance .. " Fly Settings"):AddSlider(Flag .. "Amount", {Text = "Amount", Default = UIState[3][Flag .. "Amount"], Min = 0, Max = 50, Rounding = 0, Callback = function(Value)
                 UIState[3][Flag .. "Amount"] = Value
             end})
         end
@@ -4997,15 +4996,17 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         SpeedMenu:AddDependencyBox({UIState[3], "Movement_Speed"}):AddSlider("Movement_SpeedAmount", {Text = "Amount", Default = UIState[3].Movement_SpeedAmount, Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
             UIState[3].Movement_SpeedAmount = Value
         end})
+        SpeedMenu:AddToggle("Movement_SpeedIgnoreADS", {Text = "Ignore ADS", Default = UIState[3].Movement_SpeedIgnoreADS, Callback = function(Value)
+            UIState[3].Movement_SpeedIgnoreADS = Value
+        end})
         local StanceOverrideMenu = SpeedMenu:AddToggle("Movement_SpeedStanceOverride", {Text = "Stance Override", Default = UIState[3].Movement_SpeedStanceOverride, Callback = function(Value)
             UIState[3].Movement_SpeedStanceOverride = Value
         end}):AddSettingsMenu("Stance Override Settings")
         for _,Stance in {"Stand", "Crouch", "Prone"} do
             local Flag = "Movement_Speed" .. Stance
-            local StanceMenu = StanceOverrideMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
+            StanceOverrideMenu:AddToggle(Flag, {Text = Stance, Default = UIState[3][Flag], Callback = function(Value)
                 UIState[3][Flag] = Value
-            end}):AddSettingsMenu(Stance .. " Speed Settings")
-            StanceMenu:AddSlider(Flag .. "Amount", {Text = "Amount", Default = UIState[3][Flag .. "Amount"], Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
+            end}):AddSettingsMenu(Stance .. " Speed Settings"):AddSlider(Flag .. "Amount", {Text = "Amount", Default = UIState[3][Flag .. "Amount"], Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
                 UIState[3][Flag .. "Amount"] = Value
             end})
         end
