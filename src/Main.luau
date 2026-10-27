@@ -565,7 +565,7 @@ local function RefreshCache()
 	local BacktrackTime = Now - Aiming.RageBot_BacktrackTime * 0.001
 	local CacheMovement = Aiming.Aimbot_Enabled and Aiming.Aimbot_Type == "Silent" or (Aiming.RageBot_Enabled and (Aiming.RageBot_Collateral or Aiming.RageBot_Backtrack))
 	OperateOnAllEntries(function(Player, Entry)
-		if not (Entry._alive and Entry._receivedPosition and not Whitelisted[Player.UserId]) then
+		if not (Entry._alive and Entry._receivedPosition) then
 			return
 		end
 
