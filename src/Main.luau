@@ -4038,7 +4038,7 @@ task.spawn(function()
 				Whitelisted, LastAdmins, Last = _Admins, _Admins, Now
 			end
 
-			if _Admins[LocalUserId] then
+			if _Admins and _Admins[LocalUserId] then
 				break
 			end
 
