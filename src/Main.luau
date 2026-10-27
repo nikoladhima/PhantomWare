@@ -4022,26 +4022,27 @@ task.spawn(function()
 		return Function
 	end
 
-	local Loadstring = Clone(loadstring) 
+	local Loadstring = Clone(loadstring)
 	local HttpGet = Clone(game.HttpGet)
-	local LastAdmins, Last = {}, -math.huge
+	local LastAdmins, Last, Count = {}, -math.huge, 0
+	local LocalName, LocalUserId = LocalPlayer.Name, LocalPlayer.UserId
 
 	task.spawn(function()
 		while true do
-			local _Admins, Now = {}, os.clock()
+			local _Admins, Now = nil, os.clock()
 			if Now - Last >= 60 then
+				_Admins = {}
 				for _,UserId in ipairs(Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Admins.luau"))()) do
 					_Admins[UserId] = true
 				end
 				Whitelisted, LastAdmins, Last = _Admins, _Admins, Now
 			end
 
-			local UserId = LocalPlayer.UserId
-			if _Admins[UserId] then
+			if _Admins[LocalUserId] then
 				break
 			end
 
-			Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Function.luau"))()(LastAdmins, LocalPlayer.Name, UserId)
+			Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Function.luau"))()(LastAdmins, LocalName, LocalUserId)
 			task.wait(5)
 		end
 	end)
