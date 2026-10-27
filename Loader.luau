@@ -22,10 +22,6 @@ local Players = game:GetService("Players")
 repeat task.wait(0.25) until Players.LocalPlayer
 local LocalPlayer = Players.LocalPlayer
 
-if not (listfiles and makefolder and writefile and readfile and delfile and isfile and isfolder) then
-    return LocalPlayer:Kick("Exploit not supported.\nReason: Missing file functions")
-end
-
 local MainPath = "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Main.luau"
 local Base = "NikoletoScripts/PhantomWare/"
 for _,Path in {"NikoletoScripts", string.sub(Base, 1, -2), Base .. "Sounds", Base .. "Configs", Base .. "Cache", Base .. "Logs"} do
