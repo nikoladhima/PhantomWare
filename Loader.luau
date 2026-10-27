@@ -22,10 +22,8 @@ local Players = game:GetService("Players")
 repeat task.wait(0.25) until Players.LocalPlayer
 local LocalPlayer = Players.LocalPlayer
 
-for Reason, Missing in {["Missing function getgenv"] = not getgenv, ["Missing file functions"] = not (listfiles and makefolder and writefile and readfile and delfile and isfile and isfolder)} do
-    if Missing then
-        return LocalPlayer:Kick("Exploit not supported.\nReason: " .. Reason)
-    end
+if not (listfiles and makefolder and writefile and readfile and delfile and isfile and isfolder) then
+    return LocalPlayer:Kick("Exploit not supported.\nReason: Missing file functions")
 end
 
 local MainPath = "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Main.luau"
