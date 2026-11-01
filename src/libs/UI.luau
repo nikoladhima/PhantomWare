@@ -3841,35 +3841,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         AimbotDependencyBox:AddDivider()
 
-        AimbotDependencyBox:AddSlider("Aimbot_MaxDistance", {
-            Text = "Max Distance", Default = UIState[1].Aimbot_MaxDistance, Min = 0, Max = 10000, Rounding = 0, Suffix = " studs", Callback = function(Value)
-                UIState[1].Aimbot_MaxDistance = Value
-            end
-        })
-
-        AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"Camera", "Mouse"}}}):AddSlider("Aimbot_Smoothness", {
-            Text = "Smoothness", Default = UIState[1].Aimbot_Smoothness, Min = 1, Max = 10, Rounding = 1, Callback = function(Value)
-                UIState[1].Aimbot_Smoothness = Value
-            end
-        })
-
-        AimbotDependencyBox:AddToggle("Aimbot_RedirectGrenade", {Text = "Redirect Grenade", Default = UIState[1].Aimbot_RedirectGrenade, Callback = function(Value)
-            UIState[1].Aimbot_RedirectGrenade = Value
-        end}):AddSettingsMenu("Redirect Grenade Settings"):AddToggle("Aimbot_FuseAssist", {Text = "Fuse Assist", Default = UIState[1].Aimbot_FuseAssist, Callback = function(Value)
-            UIState[1].Aimbot_FuseAssist = Value
-        end})
-
         local SilentDependencyBox = AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}})
-        SilentDependencyBox:AddToggle("Aimbot_Collateral", {
-            Text = "Collateral", Default = UIState[1].Aimbot_Collateral, Callback = function(Value)
-                UIState[1].Aimbot_Collateral = Value
-            end
-        }):AddSettingsMenu("Collateral Settings"):AddSlider("Aimbot_CollateralRadius", {
-            Text = "Radius", Default = UIState[1].Aimbot_CollateralRadius, Min = 1, Max = 9.9, Rounding = 1, Callback = function(Value)
-                UIState[1].Aimbot_CollateralRadius = Value
-            end
-        })
-
         local AutoFireMenu = SilentDependencyBox:AddToggle("Aimbot_AutoFire", {
             Text = "Auto Fire", Default = UIState[1].Aimbot_AutoFire, Callback = function(Value)
                 UIState[1].Aimbot_AutoFire = Value
@@ -3889,19 +3861,31 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        SilentDependencyBox:AddSlider("Aimbot_HitChance", {
+        AimbotDependencyBox:AddToggle("Aimbot_RedirectGrenade", {Text = "Redirect Grenade", Default = UIState[1].Aimbot_RedirectGrenade, Callback = function(Value)
+            UIState[1].Aimbot_RedirectGrenade = Value
+        end}):AddSettingsMenu("Redirect Grenade Settings"):AddToggle("Aimbot_FuseAssist", {Text = "Fuse Assist", Default = UIState[1].Aimbot_FuseAssist, Callback = function(Value)
+            UIState[1].Aimbot_FuseAssist = Value
+        end})
+
+        AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"Camera", "Mouse"}}}):AddSlider("Aimbot_Smoothness", {
+            Text = "Smoothness", Default = UIState[1].Aimbot_Smoothness, Min = 1, Max = 10, Rounding = 1, Callback = function(Value)
+                UIState[1].Aimbot_Smoothness = Value
+            end
+        })
+
+        AimbotDependencyBox:AddSlider("Aimbot_MaxDistance", {
+            Text = "Max Distance", Default = UIState[1].Aimbot_MaxDistance, Min = 0, Max = 10000, Rounding = 0, Suffix = " studs", Callback = function(Value)
+                UIState[1].Aimbot_MaxDistance = Value
+            end
+        })
+
+        AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}}):AddSlider("Aimbot_HitChance", {
             Text = "Hit Chance", Default = UIState[1].Aimbot_HitChance, Min = 0, Max = 100, Rounding = 0, Callback = function(Value)
                 UIState[1].Aimbot_HitChance = Value
             end
         })
 
         AimbotDependencyBox:AddDivider()
-
-        AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
-            UIState[1].Aimbot_WallCheck = Value
-        end}):AddSettingsMenu("Wall Check Settings"):AddDropdown("Aimbot_WallCheckAction", {Text = "Action", Default = UIState[1].Aimbot_WallCheckAction, Values = {"Ignore Target", "Pause Aimbot"}, Callback = function(Value)
-            UIState[1].Aimbot_WallCheckAction = Value
-        end})
 
         local AimbotHitScanMenu = AimbotDependencyBox:AddToggle("Aimbot_HitScanning", {Text = "Hit Scanning", Default = UIState[1].Aimbot_HitScanning, Callback = function(Value)
             UIState[1].Aimbot_HitScanning = Value
@@ -3922,6 +3906,24 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[1].Aimbot_HitScanningRadius = Value
             end
         })
+
+        AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}}):AddToggle("Aimbot_Collateral", {
+            Text = "Collateral", Default = UIState[1].Aimbot_Collateral, Callback = function(Value)
+                UIState[1].Aimbot_Collateral = Value
+            end
+        }):AddSettingsMenu("Collateral Settings"):AddSlider("Aimbot_CollateralRadius", {
+            Text = "Radius", Default = UIState[1].Aimbot_CollateralRadius, Min = 1, Max = 9.9, Rounding = 1, Callback = function(Value)
+                UIState[1].Aimbot_CollateralRadius = Value
+            end
+        })
+
+        AimbotDependencyBox:AddDivider()
+
+        AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
+            UIState[1].Aimbot_WallCheck = Value
+        end}):AddSettingsMenu("Wall Check Settings"):AddDropdown("Aimbot_WallCheckAction", {Text = "Action", Default = UIState[1].Aimbot_WallCheckAction, Values = {"Ignore Target", "Pause Aimbot"}, Callback = function(Value)
+            UIState[1].Aimbot_WallCheckAction = Value
+        end})
 
         AimbotDependencyBox:AddToggle("Aimbot_DeathNotification", {Text = "Death Notification", Default = UIState[1].Aimbot_DeathNotification, Callback = function(Value)
             UIState[1].Aimbot_DeathNotification = Value
