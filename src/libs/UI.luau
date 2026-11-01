@@ -3874,7 +3874,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         })
 
         AimbotDependencyBox:AddSlider("Aimbot_MaxDistance", {
-            Text = "Max Distance", Default = UIState[1].Aimbot_MaxDistance, Min = 0, Max = 10000, Rounding = 0, Suffix = " studs", Callback = function(Value)
+            Text = "Max Distance", Default = UIState[1].Aimbot_MaxDistance, Min = 0, Max = 10000, Rounding = 0, Callback = function(Value)
                 UIState[1].Aimbot_MaxDistance = Value
             end
         })
@@ -3890,19 +3890,12 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         local AimbotHitScanMenu = AimbotDependencyBox:AddToggle("Aimbot_HitScanning", {Text = "Hit Scanning", Default = UIState[1].Aimbot_HitScanning, Callback = function(Value)
             UIState[1].Aimbot_HitScanning = Value
         end}):AddSettingsMenu("Hit Scanning Settings")
-        AimbotHitScanMenu:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"None", "Camera", "Mouse"}}}):AddDropdown("Aimbot_HitScanningMode", {Text = "Scan Mode", Default = UIState[1].Aimbot_HitScanningMode, Values = {"Cardinal", "Sphere", "Corners"}, Callback = function(Value)
+        AimbotHitScanMenu:AddDropdown("Aimbot_HitScanningMode", {Text = "Scan Mode", Default = UIState[1].Aimbot_HitScanningMode, Values = {"Cardinal", "Sphere", "Corners"}, Callback = function(Value)
             UIState[1].Aimbot_HitScanningMode = Value
         end})
 
-        local SilentScanBox = AimbotHitScanMenu:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}})
-        SilentScanBox:AddDropdown("Aimbot_HitScanningAxes", {Text = "Axes", Default = UIState[1].Aimbot_HitScanningAxes, Values = {"X", "Y", "Z"}, Multi = true, Callback = function(Value)
-            UIState[1].Aimbot_HitScanningAxes = Value
-        end})
-        SilentScanBox:AddSlider("Aimbot_HitScanningSteps", {Text = "Steps", Default = UIState[1].Aimbot_HitScanningSteps, Min = 1, Max = 5, Rounding = 0, Callback = function(Value)
-            UIState[1].Aimbot_HitScanningSteps = Value
-        end})
         AimbotHitScanMenu:AddSlider("Aimbot_HitScanningRadius", {
-            Text = "Scan Radius", Default = UIState[1].Aimbot_HitScanningRadius, Min = 0.5, Max = 3.3, Rounding = 1, Callback = function(Value)
+            Text = "Scan Radius", Default = UIState[1].Aimbot_HitScanningRadius, Min = 0.5, Max = 9.9, Rounding = 1, Callback = function(Value)
                 UIState[1].Aimbot_HitScanningRadius = Value
             end
         })
@@ -4573,6 +4566,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[2].Camera_ThirdPersonHideViewModel = Value
             UIFeatures[5]:Refresh()
         end})
+        ThirdPersonMenu:AddToggle("Camera_ThirdPersonSmoothing", {Text = "Smoothing", Default = UIState[2].Camera_ThirdPersonSmoothing, Callback = function(Value)
+            UIState[2].Camera_ThirdPersonSmoothing = Value
+        end})
         ThirdPersonMenu:AddSlider("Camera_ThirdPersonOffsetX", {Text = "Offset X", Default = UIState[2].Camera_ThirdPersonOffsetX, Min = -20, Max = 20, Rounding = 0, Callback = function(Value)
             UIState[2].Camera_ThirdPersonOffsetX = Value
         end})
@@ -4948,7 +4944,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
         KnifeAuraDependencyBox:AddSlider("KnifeAura_Delay", {
-            Text = "Hit Delay", Default = UIState[3].KnifeAura_Delay, Min = 0.1, Max = 0.5, Rounding = 2, Callback = function(Value)
+            Text = "Hit Delay", Default = UIState[3].KnifeAura_Delay, Min = 0, Max = 0.5, Rounding = 2, Callback = function(Value)
                 UIState[3].KnifeAura_Delay = Value
             end
         })
