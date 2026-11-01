@@ -147,8 +147,6 @@ local Aiming = {
 
 	Aimbot_HitScanning = false,
 	Aimbot_HitScanningMode = "Cardinal",
-	Aimbot_HitScanningAxes = {X = true, Y = true, Z = true},
-	Aimbot_HitScanningSteps = 1,
 	Aimbot_HitScanningRadius = 1,
 	Aimbot_Collateral = false,
 	Aimbot_CollateralRadius = 9.9,
@@ -362,6 +360,7 @@ local Visuals = {
 	Camera_ThirdPerson = false,
 	Camera_ThirdPersonCameraCollision = true,
 	Camera_ThirdPersonHideViewModel = false,
+	Camera_ThirdPersonSmoothing = true,
 	Camera_ThirdPersonOffsetX = 0,
 	Camera_ThirdPersonOffsetY = 0,
 	Camera_ThirdPersonOffsetZ = 7,
@@ -569,6 +568,7 @@ local OperateOnAllEntries = ReplicationInterface.operateOnAllEntries
 local MuzzleFlash = Effects.muzzleflash
 local Crosshair = Module.__get("HudScreenGui").getScreenGui().Main.DisplayCrosshairs
 local GetTime = Module.__get("GameClock").getTime
+local ToLookAnglesYX = Module.__get("VectorLib").toLookAnglesYX
 
 local BulletLifetime = PublicSettings.bulletLifeTime
 local BulletAcceleration = PublicSettings.bulletAcceleration
@@ -2614,11 +2614,9 @@ function ThirdPersonModule:Update(DeltaTime)
 			end
 
 			FakeReplicationObject._player = LocalPlayer
-			FakeReplicationObject:spawn(nil, Loadout)
+			FakeReplicationObject:spawn(Position, Loadout)
 
 			self.Object = FakeReplicationObject._thirdPersonObject
-			self.Object:setSprint(Character._sprinting)
-			self.Object:setAim(Weapon and Weapon._aiming)
 
 			for _,Part in self.Object._characterModelHash do
 				Part.LocalTransparencyModifier = 0
@@ -2636,23 +2634,29 @@ function ThirdPersonModule:Update(DeltaTime)
 	end
 
 	self.Object:setStance(Character._movementMode)
+	self.Object:setSprint(Character._sprinting)
+	self.Object:setAim(Weapon and Weapon._aiming)
 	local Angles = GetActiveCamera()._angles
+	local BarrelAngles = Angles
 	if Miscellaneous.AntiAim_Enabled then
 		Angles = GetAntiAimAngles(Angles)
+		BarrelAngles = Angles * 0.99
 	else
 		SpinTime = 0
+		if Weapon and Weapon:getWeaponType() == "Firearm" then
+			BarrelAngles = Vector3.new(ToLookAnglesYX(Weapon:getBarrelCFrame().LookVector))
+		end
 	end
 
-	FakeReplicationObject._posspring.t = Position
-	FakeReplicationObject._posspring.p = Position
-	FakeReplicationObject._lookangles.t = Angles
-	FakeReplicationObject._lookangles.p = Angles
+	local LookYaw, BarrelYaw = FakeReplicationObject._lookangles.t.Y, FakeReplicationObject._barrelAngles.t.Y
+	Angles = Vector3.new(Angles.X, (Angles.Y - LookYaw + math.pi) % (math.pi * 2) - math.pi + LookYaw, 0)
+	BarrelAngles = Vector3.new(BarrelAngles.X, (BarrelAngles.Y - BarrelYaw + math.pi) % (math.pi * 2) - math.pi + BarrelYaw, 0)
 
 	local Time = GetTime()
-	FakeReplicationObject._smoothReplication:receive(os.clock(), Time, {
+	FakeReplicationObject._smoothReplication:receive(Time, Time, {
 		t = Time, position = Position, velocity = Velocity,
-		angles = Angles, barrelAngles = Miscellaneous.AntiAim_Enabled and Angles * 0.99 or Vector3.zero, breakcount = 0
-	}, true)
+		angles = Angles, barrelAngles = BarrelAngles, breakcount = 0
+	}, false)
 
 	local Visible = not (Visuals.Camera_ThirdPersonHideCharacterWhileAiming and Weapon and Weapon._aiming)
 	self.Object.canRenderWeapon = Visible
@@ -2662,6 +2666,9 @@ function ThirdPersonModule:Update(DeltaTime)
 	end
 
 	local Model = self.Object._characterModel
+	if Visible and not Visuals.Camera_ThirdPersonSmoothing then
+		Model:PivotTo(Model:GetPivot() + (Position - self.Object._rootPart.Position))
+	end
 	local GhostCharacter, GhostColor = Visuals.Camera_ThirdPersonGhostCharacter, Visuals.Combat_HitGhostsColor
 	local Cache = self.GhostCache
 	if Cache and Cache.Model ~= Model then
@@ -2802,15 +2809,14 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 	local IsClosest = AimbotPart == "Closest"
 	local ScanParts = IsClosest or AimbotPart == "Best"
 	local BestPart, BestScreen, BestVisible, BestPosition, BestScore = nil, nil, false, nil, math.huge
-	local IsSilent, HitScanning = Aiming.Aimbot_Type == "Silent", Aiming.Aimbot_HitScanning
+	local HitScanning = Aiming.Aimbot_HitScanning
 	local IgnoreBlocked = WallCheck and Aiming.Aimbot_WallCheckAction == "Ignore Target"
 	local Origin, RadiusSquared, MaxDistance = Camera.CFrame.Position, FOVRadius * FOVRadius, Aiming.Aimbot_MaxDistance
-	local ScanOffsets, Radius, Steps
+	local ScanOffsets, Radius
 	if HitScanning then
-		local ScanMode = IsSilent and "Cardinal" or Aiming.Aimbot_HitScanningMode
+		local ScanMode = Aiming.Aimbot_HitScanningMode
 		ScanOffsets = ScanMode == "Cardinal" and CardinalAxes or ScanMode == "Sphere" and HitScanSphereOffsets
 		Radius = Aiming.Aimbot_HitScanningRadius * (ScanOffsets and 1 or 0.5)
-		Steps = IsSilent and Aiming.Aimbot_HitScanningSteps or 1
 	end
 
 	for Index = 1, ScanParts and 6 or 1 do
@@ -2820,15 +2826,11 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 		if HitScanning then
 			local Center = Part.Position
 			local Offsets = ScanOffsets or HitScanCorners[PartSizes[Name]]
-			for _Index = 0, #Offsets * Steps do
+			for _Index = 0, #Offsets do
 				local _Position = Center
 				if _Index > 0 then
-					local Offset = Offsets[math.floor((_Index - 1) / Steps) + 1]
-					if IsSilent and not Aiming.Aimbot_HitScanningAxes[Offset.X ~= 0 and "X" or Offset.Y ~= 0 and "Y" or "Z"] then
-						continue
-					end
-					local _Radius = Radius * ((_Index - 1) % Steps + 1) / Steps
-					_Position += ScanOffsets and Offset * _Radius or Offset[1] + Offset[2] * _Radius
+					local Offset = Offsets[_Index]
+					_Position += ScanOffsets and Offset * Radius or Offset[1] + Offset[2] * Radius
 				end
 
 				if (_Position - Origin).Magnitude > MaxDistance then
@@ -3569,7 +3571,7 @@ end)
 ReplicatedStorage:WaitForChild("RemoteEvent", 6e9).OnClientEvent:Connect(function(Packet, ...)
 	if Packet == "startvotekick" then
 		if Miscellaneous.Extras_HopOnVotekick and (...) == LocalPlayer.Name then
-			local TeleportService = game:GetService("TeleportService")
+			--[[local TeleportService = game:GetService("TeleportService")
 			if not pcall(TeleportService.Teleport, TeleportService, game.PlaceId) then
 				for _ = 1, 4 do
 					if pcall(TeleportService.Teleport, TeleportService, game.PlaceId) then
@@ -3577,6 +3579,60 @@ ReplicatedStorage:WaitForChild("RemoteEvent", 6e9).OnClientEvent:Connect(functio
 					end
 					task.wait(0.5)
 				end
+			end]]
+			local TeleportService = game:GetService("TeleportService")
+			pcall(function()
+				local File = "NikoletoScripts/PhantomWare/Cache/" .. LocalPlayer.UserId .. ".json"
+				local Blocked = isfile(File) and HttpService:JSONDecode(readfile(File)) or {}
+				Blocked[game.JobId] = true
+				writefile(File, HttpService:JSONEncode(Blocked))
+
+				local Servers = {}
+				local Cursor
+
+				for _ = 1, 3 do
+					local URL = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100"
+					if Cursor then
+						URL ..= "&cursor=" .. HttpService:UrlEncode(Cursor)
+					end
+
+					local Success, Data = pcall(function()
+						return HttpService:JSONDecode(game:HttpGet(URL))
+					end)
+
+					if not Success or type(Data) ~= "table" or type(Data.data) ~= "table" then
+						break
+					end
+
+					for _,Server in ipairs(Data.data) do
+						if Server.id ~= game.JobId and not Blocked[Server.id] and Server.playing < Server.maxPlayers then
+							table.insert(Servers, Server)
+						end
+					end
+
+					Cursor = Data.nextPageCursor
+					if not Cursor or Cursor == "" then
+						break
+					end
+				end
+
+				table.sort(Servers, function(A, B)
+					return A.playing > B.playing
+				end)
+
+				for Index = 1, math.min(5, #Servers) do
+					if pcall(TeleportService.TeleportToPlaceInstance, TeleportService, game.PlaceId, Servers[Index].id, LocalPlayer) then
+						return
+					end
+					task.wait(0.4)
+				end
+			end)
+
+			for _ = 1, 3 do
+				if pcall(TeleportService.Teleport, TeleportService, game.PlaceId) then
+					return
+				end
+				task.wait(0.35)
 			end
 		end
 	elseif Packet == "swapweapon" then
