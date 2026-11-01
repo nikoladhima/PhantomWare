@@ -5123,7 +5123,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 break
             end
         end})
-        Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "As of 10/25/2026, these Unlocks are undetected, use at your own risk.\n1. These Unlocks only last for the current session and are only visible to you, not others.\n2. Dropping Unlocked weapons makes it lose any Unlocked Add-Ons meaning you'll need to respawn to have the Add-Ons again.\n3. Dropping an Unlocked Knife in a match will make it dissapear.")
+        Miscellaneous_ClientSessionUnlocks:AddLabel("Information [MUST READ | HOVER]", false, "As of 11/1/2026, these Unlocks are undetected, use at your own risk.\n1. These Unlocks only last for the current session and are only visible to you, not others.\n2. Dropping Unlocked weapons makes it lose any Unlocked Add-Ons meaning you'll need to respawn to have the Add-Ons again.\n3. Dropping an Unlocked Knife in a match will make it dissapear.")
 
         local Miscellaneous_Extras = MiscellaneousTab:AddRightGroupbox("Extras")
         Miscellaneous_Extras:AddToggle("Extras_BreakAllWindows", {Text = "Break All Windows", Default = UIState[3].Extras_BreakAllWindows, Callback = function(Value)
