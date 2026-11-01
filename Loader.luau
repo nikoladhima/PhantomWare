@@ -24,7 +24,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local MainPath = "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Main.luau"
 local Base = "NikoletoScripts/PhantomWare/"
-for _,Path in {"NikoletoScripts", string.sub(Base, 1, -2), Base .. "Sounds", Base .. "Configs", Base .. "Cache", Base .. "Logs"} do
+for _,Path in {"NikoletoScripts", string.sub(Base, 1, -2), Base .. "Sounds", Base .. "Configs", Base .. "Cache"} do
     pcall(function()
         if not isfolder(Path) then
             makefolder(Path)
@@ -91,12 +91,61 @@ end
 
 task.delay(0.35, function()
     local TeleportService = game:GetService("TeleportService")
-    for _ = 1, 5 do
+    pcall(function()
+        local HttpService = game:GetService("HttpService")
+        local File = "NikoletoScripts/PhantomWare/Cache/" .. LocalPlayer.UserId .. ".json"
+        local Blocked = isfile(File) and HttpService:JSONDecode(readfile(File)) or {}
+        Blocked[game.JobId] = true
+        writefile(File, HttpService:JSONEncode(Blocked))
+
+        local Servers = {}
+        local Cursor
+
+        for _ = 1, 3 do
+            local URL = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100"
+            if Cursor then
+                URL ..= "&cursor=" .. HttpService:UrlEncode(Cursor)
+            end
+
+            local ___Success, Data = pcall(function()
+                return HttpService:JSONDecode(game:HttpGet(URL))
+            end)
+
+            if not ___Success or type(Data) ~= "table" or type(Data.data) ~= "table" then
+                break
+            end
+
+            for _,Server in ipairs(Data.data) do
+                if Server.id ~= game.JobId and not Blocked[Server.id] and Server.playing < Server.maxPlayers then
+                    table.insert(Servers, Server)
+                end
+            end
+
+            Cursor = Data.nextPageCursor
+            if not Cursor or Cursor == "" then
+                break
+            end
+        end
+
+        table.sort(Servers, function(A, B)
+            return A.playing > B.playing
+        end)
+
+        for Index = 1, math.min(5, #Servers) do
+            if pcall(TeleportService.TeleportToPlaceInstance, TeleportService, game.PlaceId, Servers[Index].id, LocalPlayer) then
+                return
+            end
+            task.wait(0.4)
+        end
+    end)
+
+    for _ = 1, 3 do
         if pcall(TeleportService.Teleport, TeleportService, game.PlaceId) then
             return
         end
-        task.wait(0.5)
+        task.wait(0.35)
     end
+
     LocalPlayer:Kick("Teleport failed. Please follow these steps to fix the issue:\n1. Click Leave to return to the Roblox Desktop App.\n2. Rejoin Phantom Forces directly from the Desktop App.\n3. Wait for the game to load, then execute PhantomWare again.\n\nIf the issue persists, open a support ticket in our Discord server:\ndiscord.gg/DsGCKtxxEN")
     pcall(setclipboard, "discord.gg/DsGCKtxxEN")
 end)
