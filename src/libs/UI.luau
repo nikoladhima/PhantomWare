@@ -3121,22 +3121,6 @@ local function ValidateConfig(Data)
         return false, "Invalid configuration data."
     end
 
-    Data.ESPVisuals_MultiPointScale = Data.ESPVisuals_MultiPointScale or Data.Others_MultiPointScale
-    Data.Others_MultiPointScale = nil
-
-    for _,Suffix in {"s", "Color", "Transparency", "PixelOffset", "PixelOffsetSize", "StaticElements", "StaticPosition", "StatusElements", "StatusPosition", "Size", "Position"} do
-        local Flag, OldFlag = "ESPVisuals_ElementTag" .. Suffix, "ESPVisuals_HeadTag" .. Suffix
-        Data[Flag] = Data[Flag] or Data[OldFlag]
-        Data[OldFlag] = nil
-    end
-
-    local Position = Data.ESPVisuals_ElementTagPosition
-    if Position then
-        Data.ESPVisuals_ElementTagStaticPosition = Data.ESPVisuals_ElementTagStaticPosition or Position
-        Data.ESPVisuals_ElementTagStatusPosition = Data.ESPVisuals_ElementTagStatusPosition or Position
-        Data.ESPVisuals_ElementTagPosition = nil
-    end
-
     for Flag, Saved in next, Data do
         if type(Flag) ~= "string" or type(Saved) ~= "table" or type(Saved.Type) ~= "string" or Saved.Value == nil then
             return false, "Invalid config entry: " .. tostring(Flag)
@@ -3158,13 +3142,6 @@ local function ValidateConfig(Data)
                 if Option.Multi then
                     Valid = type(Value) == "table"
                     if Valid then
-                        if Flag == "ESPVisuals_ElementTagStaticElements" then
-                            Value.Stance = nil
-                            Value.Ammo = nil
-                        elseif Flag == "ESPVisuals_ElementTagStatusElements" then
-                            Value.Grenade = nil
-                            Value.Reloading = nil
-                        end
                         for Name, Selected in next, Value do
                             if type(Selected) ~= "boolean" or not table.find(Option.Values, Name) then
                                 Valid = false
@@ -3176,11 +3153,9 @@ local function ValidateConfig(Data)
                     Valid = table.find(Option.Values, Value)
                 end
             elseif Type == "KeyPicker" then
-                Valid = type(Value) == "string" and ConfigKeys[Value]
-                    and (Saved.Mode == nil or table.find(Option.Modes, Saved.Mode))
+                Valid = type(Value) == "string" and ConfigKeys[Value] and (Saved.Mode == nil or table.find(Option.Modes, Saved.Mode))
             elseif Type == "ColorPicker" then
-                Valid = type(Value) == "string" and string.match(Value, "^%x%x%x%x%x%x$")
-                    and (Saved.Transparency == nil or (type(Saved.Transparency) == "number" and Saved.Transparency >= 0 and Saved.Transparency <= 1))
+                Valid = type(Value) == "string" and string.match(Value, "^%x%x%x%x%x%x$") and (Saved.Transparency == nil or (type(Saved.Transparency) == "number" and Saved.Transparency >= 0 and Saved.Transparency <= 1))
             else
                 Valid = false
             end
@@ -3197,8 +3172,7 @@ end
 function Library:ApplyConfiguration(Data)
     local Valid, Error = ValidateConfig(Data)
     if not Valid then
-        Library:Notify(Error, 3)
-        return
+        return Library:Notify(Error, 3)
     end
 
     for Flag, Saved in next, Data do
@@ -3206,6 +3180,7 @@ function Library:ApplyConfiguration(Data)
         if not Option then
             continue
         end
+
         if Saved.Type == "ColorPicker" then
             Option:SetValueRGB(Color3.fromHex(Saved.Value), Saved.Transparency)
         elseif Saved.Type == "KeyPicker" then
@@ -3227,8 +3202,7 @@ end
 local function WriteLocalConfig(Name, Data)
     local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Data)
     if not Success then
-        Library:Notify("Failed to serialize configuration.", 3)
-        return
+        return Library:Notify("Failed to serialize configuration.", 3)
     end
 
     writefile("NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns", Encoded)
@@ -3248,19 +3222,18 @@ local function LoadLocalConfig(Name)
     local Path = "NikoletoScripts/PhantomWare/Configs/" .. Name .. ".ns"
     local Content = isfile(Path) and readfile(Path)
     if not Content then
-        Library:Notify("Config no longer exists.", 3)
-        return
+        return Library:Notify("Config no longer exists.", 3)
     end
 
     local Success, Data = pcall(HttpService.JSONDecode, HttpService, Content)
     if not Success or type(Data) ~= "table" then
-        Library:Notify("Invalid Configuration Profile: " .. Name, 3)
-        return
+        return Library:Notify("Invalid Configuration Profile: " .. Name, 3)
     end
 
     if not Library:ApplyConfiguration(Data) then
         return
     end
+
     Library:Notify("Loaded Configuration Profile: " .. Name, 3)
     return true
 end
@@ -3866,7 +3839,13 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[1].Aimbot_Part = Value
         end})
 
-        AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"Camera", "Mouse", "Silent"}}}):AddDivider()
+        AimbotDependencyBox:AddDivider()
+
+        AimbotDependencyBox:AddSlider("Aimbot_MaxDistance", {
+            Text = "Max Distance", Default = UIState[1].Aimbot_MaxDistance, Min = 0, Max = 10000, Rounding = 0, Suffix = " studs", Callback = function(Value)
+                UIState[1].Aimbot_MaxDistance = Value
+            end
+        })
 
         AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, {"Camera", "Mouse"}}}):AddSlider("Aimbot_Smoothness", {
             Text = "Smoothness", Default = UIState[1].Aimbot_Smoothness, Min = 1, Max = 10, Rounding = 1, Callback = function(Value)
@@ -3874,20 +3853,18 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        local RedirectGrenadeMenu = AimbotDependencyBox:AddToggle("Aimbot_RedirectGrenade", {Text = "Redirect Grenade", Default = UIState[1].Aimbot_RedirectGrenade, Callback = function(Value)
+        AimbotDependencyBox:AddToggle("Aimbot_RedirectGrenade", {Text = "Redirect Grenade", Default = UIState[1].Aimbot_RedirectGrenade, Callback = function(Value)
             UIState[1].Aimbot_RedirectGrenade = Value
-        end}):AddSettingsMenu("Redirect Grenade Settings")
-        RedirectGrenadeMenu:AddToggle("Aimbot_FuseAssist", {Text = "Fuse Assist", Default = UIState[1].Aimbot_FuseAssist, Callback = function(Value)
+        end}):AddSettingsMenu("Redirect Grenade Settings"):AddToggle("Aimbot_FuseAssist", {Text = "Fuse Assist", Default = UIState[1].Aimbot_FuseAssist, Callback = function(Value)
             UIState[1].Aimbot_FuseAssist = Value
         end})
 
         local SilentDependencyBox = AimbotDependencyBox:AddDependencyBox():SetupDependencies({{Options.Aimbot_Type, "Silent"}})
-        local AimbotCollateralMenu = SilentDependencyBox:AddToggle("Aimbot_Collateral", {
+        SilentDependencyBox:AddToggle("Aimbot_Collateral", {
             Text = "Collateral", Default = UIState[1].Aimbot_Collateral, Callback = function(Value)
                 UIState[1].Aimbot_Collateral = Value
             end
-        }):AddSettingsMenu("Collateral Settings")
-        AimbotCollateralMenu:AddSlider("Aimbot_CollateralRadius", {
+        }):AddSettingsMenu("Collateral Settings"):AddSlider("Aimbot_CollateralRadius", {
             Text = "Radius", Default = UIState[1].Aimbot_CollateralRadius, Min = 1, Max = 9.9, Rounding = 1, Callback = function(Value)
                 UIState[1].Aimbot_CollateralRadius = Value
             end
@@ -3920,10 +3897,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         AimbotDependencyBox:AddDivider()
 
-        local WallCheckMenu = AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
+        AimbotDependencyBox:AddToggle("Aimbot_WallCheck", {Text = "Wall Check", Default = UIState[1].Aimbot_WallCheck, Callback = function(Value)
             UIState[1].Aimbot_WallCheck = Value
-        end}):AddSettingsMenu("Wall Check Settings")
-        WallCheckMenu:AddDropdown("Aimbot_WallCheckAction", {Text = "Action", Default = UIState[1].Aimbot_WallCheckAction, Values = {"Ignore Target", "Pause Aimbot"}, Callback = function(Value)
+        end}):AddSettingsMenu("Wall Check Settings"):AddDropdown("Aimbot_WallCheckAction", {Text = "Action", Default = UIState[1].Aimbot_WallCheckAction, Values = {"Ignore Target", "Pause Aimbot"}, Callback = function(Value)
             UIState[1].Aimbot_WallCheckAction = Value
         end})
 
@@ -3942,7 +3918,7 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             UIState[1].Aimbot_HitScanningSteps = Value
         end})
         AimbotHitScanMenu:AddSlider("Aimbot_HitScanningRadius", {
-            Text = "Scan Radius", Default = UIState[1].Aimbot_HitScanningRadius, Min = 0.5, Max = 3, Rounding = 1, Callback = function(Value)
+            Text = "Scan Radius", Default = UIState[1].Aimbot_HitScanningRadius, Min = 0.5, Max = 3.3, Rounding = 1, Callback = function(Value)
                 UIState[1].Aimbot_HitScanningRadius = Value
             end
         })
@@ -4015,8 +3991,18 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         RageBotDependencyBox:AddToggle("RageBot_BlockShooting", {Text = "Block Shooting", Default = UIState[1].RageBot_BlockShooting, Callback = function(Value)
             UIState[1].RageBot_BlockShooting = Value
         end})
+
         RageBotDependencyBox:AddDropdown("RageBot_Part", {Text = "Part", Default = UIState[1].RageBot_Part, Values = {"Head", "Torso", "Best"}, Callback = function(Value)
             UIState[1].RageBot_Part = Value
+        end})
+
+        RageBotDependencyBox:AddDivider()
+
+        RageBotDependencyBox:AddToggle("RageBot_UseShootSound", {Text = "Use Shoot Sound", Default = UIState[1].RageBot_UseShootSound, Callback = function(Value)
+            UIState[1].RageBot_UseShootSound = Value
+        end})
+        RageBotDependencyBox:AddToggle("RageBot_UseHitSound", {Text = "Use Hit Sound", Default = UIState[1].RageBot_UseHitSound, Callback = function(Value)
+            UIState[1].RageBot_UseHitSound = Value
         end})
 
         RageBotDependencyBox:AddDivider()
@@ -4036,18 +4022,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
 
         RageBotDependencyBox:AddDivider()
 
-        local HitScanMenu = RageBotDependencyBox:AddToggle("RageBot_HitScanning", {Text = "Hit Scanning", Default = UIState[1].RageBot_HitScanning, Callback = function(Value)
-            UIState[1].RageBot_HitScanning = Value
-        end}):AddSettingsMenu("Hit Scanning Settings")
-        HitScanMenu:AddDropdown("RageBot_HitScanningMode", {Text = "Scan Mode", Default = UIState[1].RageBot_HitScanningMode, Values = {"Cardinal", "Sphere", "Corners"}, Callback = function(Value)
-            UIState[1].RageBot_HitScanningMode = Value
-        end})
-        HitScanMenu:AddSlider("RageBot_HitScanningRadius", {
-            Text = "Scan Radius", Default = UIState[1].RageBot_HitScanningRadius, Min = 0.5, Max = 9.9, Rounding = 1, Callback = function(Value)
-                UIState[1].RageBot_HitScanningRadius = Value
-            end
-        })
-
         local FireScanMenu = RageBotDependencyBox:AddToggle("RageBot_FireScanning", {Text = "Fire Scanning", Default = UIState[1].RageBot_FireScanning, Callback = function(Value)
             UIState[1].RageBot_FireScanning = Value
         end}):AddSettingsMenu("Fire Scanning Settings")
@@ -4063,6 +4037,18 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             Text = "Scan Count", Default = UIState[1].RageBot_FireScanningCount, Min = 1, Max = 16, Rounding = 0, Callback = function(Value)
                 UIState[1].RageBot_FireScanningCount = Value
                 UIFeatures[13]()
+            end
+        })
+
+        local HitScanMenu = RageBotDependencyBox:AddToggle("RageBot_HitScanning", {Text = "Hit Scanning", Default = UIState[1].RageBot_HitScanning, Callback = function(Value)
+            UIState[1].RageBot_HitScanning = Value
+        end}):AddSettingsMenu("Hit Scanning Settings")
+        HitScanMenu:AddDropdown("RageBot_HitScanningMode", {Text = "Scan Mode", Default = UIState[1].RageBot_HitScanningMode, Values = {"Cardinal", "Sphere", "Corners"}, Callback = function(Value)
+            UIState[1].RageBot_HitScanningMode = Value
+        end})
+        HitScanMenu:AddSlider("RageBot_HitScanningRadius", {
+            Text = "Scan Radius", Default = UIState[1].RageBot_HitScanningRadius, Min = 0.5, Max = 9.9, Rounding = 1, Callback = function(Value)
+                UIState[1].RageBot_HitScanningRadius = Value
             end
         })
 
@@ -4913,25 +4899,34 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
             end
         })
 
-        local function PlaySound(Value)
+        local function PlaySound(Value, Flag)
             if Value ~= "None"  then
-                task.spawn(UIFeatures[8], UIFeatures[6][Value], 1, 1)
+                task.spawn(UIFeatures[8], UIFeatures[6][Value], 1, UIState[3][Flag .. "CustomVolume"] and UIState[3][Flag .. "Volume"] or 1, UIState[3][Flag .. "CustomPitch"] and UIState[3][Flag .. "Pitch"] or 1)
             end
         end
 
         local SoundOverride_Groupbox = MiscellaneousTab:AddLeftGroupbox("Sound Override")
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_ShootSound", {CallbackOnSameValue = true, Text = "Shoot", Default = UIState[3].SoundOverride_ShootSound, Values = UIFeatures[9], Callback = function(Value)
-            UIState[3].SoundOverride_ShootSound = Value
-            PlaySound(Value)
-        end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_HitSound", {CallbackOnSameValue = true, Text = "Hit", Default = UIState[3].SoundOverride_HitSound, Values = UIFeatures[9], Callback = function(Value)
-            UIState[3].SoundOverride_HitSound = Value
-            PlaySound(Value)
-        end})
-        SoundOverride_Groupbox:AddDropdown("SoundOverride_KillSound", {CallbackOnSameValue = true, Text = "Kill", Default = UIState[3].SoundOverride_KillSound, Values = UIFeatures[9], Callback = function(Value)
-            UIState[3].SoundOverride_KillSound = Value
-            PlaySound(Value)
-        end})
+        for _,Name in {"Shoot", "Hit", "Kill"} do
+            local Flag = "SoundOverride_" .. Name
+            local SoundMenu = SoundOverride_Groupbox:AddToggle(Flag, {Text = Name, Default = UIState[3][Flag], Callback = function(Value)
+                UIState[3][Flag] = Value
+            end}):AddSettingsMenu(Name .. " Sound Settings")
+            SoundMenu:AddDropdown(Flag .. "Sound", {CallbackOnSameValue = true, Text = "Sound", Default = UIState[3][Flag .. "Sound"], Values = UIFeatures[9], Callback = function(Value)
+                UIState[3][Flag .. "Sound"] = Value
+                PlaySound(Value, Flag)
+            end})
+            for _,Property in {"Volume", "Pitch"} do
+                local ToggleFlag, AmountFlag = Flag .. "Custom" .. Property, Flag .. Property
+                local Toggle = SoundMenu:AddToggle(ToggleFlag, {Text = "Custom " .. Property, Default = UIState[3][ToggleFlag], Callback = function(Value)
+                    UIState[3][ToggleFlag] = Value
+                end})
+                SoundMenu:AddDependencyBox():SetupDependencies({{Toggle, true}}):AddSlider(AmountFlag, {
+                    Text = Property, Default = UIState[3][AmountFlag], Min = Property == "Volume" and 0 or 0.1, Max = Property == "Volume" and 10 or 3, Rounding = 1, Suffix = "x", Callback = function(Value)
+                        UIState[3][AmountFlag] = Value
+                    end
+                })
+            end
+        end
 
         local Miscellaneous_KnifeAura = MiscellaneousTab:AddRightGroupbox("Knife Aura")
         Miscellaneous_KnifeAura:AddToggle("KnifeAura_Enabled", {Text = "Enabled", Default = UIState[3].KnifeAura_Enabled, Callback = function(Value)
@@ -4996,9 +4991,6 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
         SpeedMenu:AddDependencyBox({UIState[3], "Movement_Speed"}):AddSlider("Movement_SpeedAmount", {Text = "Amount", Default = UIState[3].Movement_SpeedAmount, Min = 0, Max = 250, Rounding = 0, Callback = function(Value)
             UIState[3].Movement_SpeedAmount = Value
         end})
-        SpeedMenu:AddToggle("Movement_SpeedIgnoreADS", {Text = "Ignore ADS", Default = UIState[3].Movement_SpeedIgnoreADS, Callback = function(Value)
-            UIState[3].Movement_SpeedIgnoreADS = Value
-        end})
         local StanceOverrideMenu = SpeedMenu:AddToggle("Movement_SpeedStanceOverride", {Text = "Stance Override", Default = UIState[3].Movement_SpeedStanceOverride, Callback = function(Value)
             UIState[3].Movement_SpeedStanceOverride = Value
         end}):AddSettingsMenu("Stance Override Settings")
@@ -5010,6 +5002,9 @@ function Library:BuildUI(UIState, UIFeatures, GameData, PlayerData, ExecutorName
                 UIState[3][Flag .. "Amount"] = Value
             end})
         end
+        SpeedMenu:AddToggle("Movement_SpeedIgnoreADS", {Text = "Ignore ADS", Default = UIState[3].Movement_SpeedIgnoreADS, Callback = function(Value)
+            UIState[3].Movement_SpeedIgnoreADS = Value
+        end})
 
         Miscellaneous_Movement:AddToggle("Movement_InfiniteStamina", {Text = "Infinite Stamina", Default = UIState[3].Movement_InfiniteStamina, Callback = function(Value)
             UIState[3].Movement_InfiniteStamina = Value
