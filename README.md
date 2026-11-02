@@ -1,7 +1,7 @@
 ## PhantomWare
 
 > [!IMPORTANT]
-> If you encounter bugs or need support, join the Discord server: https://discord.gg/DwRT2nH93D
+> If you encounter bugs or need support, join the Discord server: https://discord.gg/DsGCKtxxEN
 
 ## ⚙️ Features:
 - RageBot & Aimbot 🎮
