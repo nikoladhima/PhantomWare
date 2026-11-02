@@ -22,7 +22,7 @@ local Players = game:GetService("Players")
 repeat task.wait(0.25) until Players.LocalPlayer
 local LocalPlayer = Players.LocalPlayer
 
-local MainPath = "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/Main.luau"
+local MainPath = "https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/src/Main.luau"
 local Base = "NikoletoScripts/PhantomWare/"
 for _,Path in {"NikoletoScripts", string.sub(Base, 1, -2), Base .. "Sounds", Base .. "Configs", Base .. "Cache"} do
     pcall(function()
