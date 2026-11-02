@@ -1,18 +1,3 @@
---[[
-    ███████████  █████                            █████                             █████   ███   █████
-    ▒▒███▒▒▒▒▒███▒▒███                            ▒▒███                             ▒▒███   ▒███  ▒▒███
-    ▒███    ▒███ ▒███████    ██████   ████████   ███████    ██████  █████████████   ▒███   ▒███   ▒███   ██████   ████████   ██████
-    ▒██████████  ▒███▒▒███  ▒▒▒▒▒███ ▒▒███▒▒███ ▒▒▒███▒    ███▒▒███▒▒███▒▒███▒▒███  ▒███   ▒███   ▒███  ▒▒▒▒▒███ ▒▒███▒▒███ ███▒▒███
-    ▒███▒▒▒▒▒▒   ▒███ ▒███   ███████  ▒███ ▒███   ▒███    ▒███ ▒███ ▒███ ▒███ ▒███  ▒▒███  █████  ███    ███████  ▒███ ▒▒▒ ▒███████
-    ▒███         ▒███ ▒███  ███▒▒███  ▒███ ▒███   ▒███ ███▒███ ▒███ ▒███ ▒███ ▒███   ▒▒▒█████▒█████▒    ███▒▒███  ▒███     ▒███▒▒▒
-    █████        ████ █████▒▒████████ ████ █████  ▒▒█████ ▒▒██████  █████▒███ █████    ▒▒███ ▒▒███     ▒▒████████ █████    ▒▒██████
-    ▒▒▒▒▒        ▒▒▒▒ ▒▒▒▒▒  ▒▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒▒▒    ▒▒▒▒▒   ▒▒▒▒▒▒  ▒▒▒▒▒ ▒▒▒ ▒▒▒▒▒      ▒▒▒   ▒▒▒       ▒▒▒▒▒▒▒▒ ▒▒▒▒▒      ▒▒▒▒▒▒
-
-    -- Made by Nikoleto Scripts, if you encounter issues, open a ticket in the Discord server.
-    GitHub: https://github.com/nikoladhima
-    Discord: https://discord.gg/DsGCKtxxEN / @nikoleto._
-]]
-
 repeat task.wait(0.25) until game:IsLoaded()
 if workspace.DistributedGameTime < 3 then
     task.wait(3 - workspace.DistributedGameTime)
@@ -85,7 +70,7 @@ if QueueOnTeleport then
             return loadstring(game:HttpGet(']] .. MainPath .. [['))()
         end
 
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/Loader.luau"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/Loader.luau"))()
     ]])
 end
 
