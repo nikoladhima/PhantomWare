@@ -538,8 +538,8 @@ local LightingCache = {
 	}, Connections = {}
 }
 
-local ImDrawing = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/libs/ImDrawing.luau"))()
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/libs/UI.luau"))()
+local ImDrawing = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/src/libs/ImDrawing.luau"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/nikoladhima/PhantomWare/refs/heads/main/src/PhantomForces/src/libs/UI.luau"))()
 
 local RoundSystemClientInterface = Module.__get("RoundSystemClientInterface")
 local PlayerDataClientInterface = Module.__get("PlayerDataClientInterface")
